@@ -515,7 +515,7 @@ export async function handleOllamaChat(req, res, apiService, currentConfig, prov
                 
                 // Get service adapter for the detected provider
                 const { getServiceAdapter } = await import('./adapter.js');
-                actualApiService = getServiceAdapter(actualConfig);
+                actualApiService = getServiceAdapter(actualConfig, currentConfig);
                 console.log(`[Ollama] Switched to provider: ${detectedProvider}`);
             } else {
                 console.warn(`[Ollama] No healthy provider found for ${detectedProvider}, using default`);
@@ -611,7 +611,7 @@ export async function handleOllamaGenerate(req, res, apiService, currentConfig, 
                 
                 // Get service adapter for the detected provider
                 const { getServiceAdapter } = await import('./adapter.js');
-                actualApiService = getServiceAdapter(actualConfig);
+                actualApiService = getServiceAdapter(actualConfig, currentConfig);
                 console.log(`[Ollama] Switched to provider: ${detectedProvider}`);
             } else {
                 console.warn(`[Ollama] No healthy provider found for ${detectedProvider}, using default`);

@@ -10,6 +10,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'node:crypto';
 import { getProviderModels } from '../provider-models.js';
 import { handleQwenOAuth } from '../oauth-handlers.js';
+import { createProxyAgent } from '../proxy-utils.js';
 
 // --- Constants ---
 const QWEN_DIR = '.qwen';
@@ -170,13 +171,15 @@ export class CredentialsClearRequiredError extends Error {
 // --- Core Service Class ---
 
 export class QwenApiService {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         this.config = config;
+        this.globalConfig = globalConfig;
         this.isInitialized = false;
         this.sharedManager = SharedTokenManager.getInstance();
         this.currentAxiosInstance = null;
         this.tokenManagerOptions = { credentialFilePath: this._getQwenCachedCredentialPath() };
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_QWEN ?? false;
+        this.useProxy = config?.useProxy ?? false;
         
         // Initialize instance-specific endpoints
         this.baseUrl = config.QWEN_BASE_URL || DEFAULT_QWEN_BASE_URL;
@@ -184,7 +187,7 @@ export class QwenApiService {
         this.oauthDeviceCodeEndpoint = `${oauthBaseUrl}/api/v1/oauth2/device/code`;
         this.oauthTokenEndpoint = `${oauthBaseUrl}/api/v1/oauth2/token`;
 
-        console.log(`[Qwen] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}`);
+        console.log(`[Qwen] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}, Custom proxy ${this.useProxy ? 'enabled' : 'disabled'}`);
         this.qwenClient = new QwenOAuth2Client(config, this.useSystemProxy);
     }
 
@@ -194,18 +197,26 @@ export class QwenApiService {
         await this._initializeAuth();
         
         // 配置 HTTP/HTTPS agent 限制连接池大小，避免资源泄漏
-        const httpAgent = new http.Agent({
+        let httpAgent = new http.Agent({
             keepAlive: true,
             maxSockets: 100,
             maxFreeSockets: 5,
             timeout: 120000,
         });
-        const httpsAgent = new https.Agent({
+        let httpsAgent = new https.Agent({
             keepAlive: true,
             maxSockets: 100,
             maxFreeSockets: 5,
             timeout: 120000,
         });
+
+        // 如果启用了自定义代理，使用代理 agent
+        const proxyAgent = createProxyAgent(this.globalConfig, this.useProxy);
+        if (proxyAgent) {
+            httpAgent = proxyAgent;
+            httpsAgent = proxyAgent;
+            console.log(`[Qwen] Using custom proxy agent`);
+        }
 
         const axiosConfig = {
             baseURL: this.baseUrl,
@@ -217,8 +228,8 @@ export class QwenApiService {
             },
         };
         
-        // 禁用系统代理
-        if (!this.useSystemProxy) {
+        // 禁用系统代理（如果没有使用自定义代理）
+        if (!this.useSystemProxy && !proxyAgent) {
             axiosConfig.proxy = false;
         }
         

@@ -228,7 +228,7 @@ export async function getApiService(config, requestedModel = null, options = {})
             console.warn(`[API Service] No healthy provider found in pool for ${config.MODEL_PROVIDER}${requestedModel ? ` supporting model: ${requestedModel}` : ''}. Falling back to main config.`);
         }
     }
-    return getServiceAdapter(serviceConfig);
+    return getServiceAdapter(serviceConfig, config);
 }
 
 /**

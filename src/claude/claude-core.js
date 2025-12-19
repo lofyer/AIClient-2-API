@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as http from 'http';
 import * as https from 'https';
+import { createProxyAgent } from '../proxy-utils.js';
 
 /**
  * Claude API Core Service Class.
@@ -12,15 +13,17 @@ export class ClaudeApiService {
      * @param {string} apiKey - Anthropic Claude API Key.
      * @param {string} baseUrl - Anthropic Claude API Base URL.
      */
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         if (!config.CLAUDE_API_KEY) {
             throw new Error("Claude API Key is required for ClaudeApiService.");
         }
         this.config = config;
+        this.globalConfig = globalConfig;
         this.apiKey = config.CLAUDE_API_KEY;
         this.baseUrl = config.CLAUDE_BASE_URL;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_CLAUDE ?? false;
-        console.log(`[Claude] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}`);
+        this.useProxy = config?.useProxy ?? false;
+        console.log(`[Claude] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}, Custom proxy ${this.useProxy ? 'enabled' : 'disabled'}`);
         this.client = this.createClient();
     }
 
@@ -30,18 +33,26 @@ export class ClaudeApiService {
      */
     createClient() {
         // 配置 HTTP/HTTPS agent 限制连接池大小，避免资源泄漏
-        const httpAgent = new http.Agent({
+        let httpAgent = new http.Agent({
             keepAlive: true,
             maxSockets: 100,
             maxFreeSockets: 5,
             timeout: 120000,
         });
-        const httpsAgent = new https.Agent({
+        let httpsAgent = new https.Agent({
             keepAlive: true,
             maxSockets: 100,
             maxFreeSockets: 5,
             timeout: 120000,
         });
+
+        // 如果启用了自定义代理，使用代理 agent
+        const proxyAgent = createProxyAgent(this.globalConfig, this.useProxy);
+        if (proxyAgent) {
+            httpAgent = proxyAgent;
+            httpsAgent = proxyAgent;
+            console.log(`[Claude] Using custom proxy agent`);
+        }
 
         const axiosConfig = {
             baseURL: this.baseUrl,
@@ -54,8 +65,8 @@ export class ClaudeApiService {
             },
         };
         
-        // 禁用系统代理以避免HTTPS代理错误
-        if (!this.useSystemProxy) {
+        // 禁用系统代理以避免HTTPS代理错误（如果没有使用自定义代理）
+        if (!this.useSystemProxy && !proxyAgent) {
             axiosConfig.proxy = false;
         }
         

@@ -455,7 +455,7 @@ export class ProviderPoolManager {
             }
         });
 
-        const serviceAdapter = getServiceAdapter(tempConfig);
+        const serviceAdapter = getServiceAdapter(tempConfig, this.globalConfig);
         
         // 获取所有可能的请求格式
         const healthCheckRequests = this._buildHealthCheckRequests(providerType, modelName);

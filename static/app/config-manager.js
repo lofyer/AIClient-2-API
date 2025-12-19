@@ -104,6 +104,18 @@ async function loadConfiguration() {
         if (providerPoolsFilePathEl) providerPoolsFilePathEl.value = data.PROVIDER_POOLS_FILE_PATH;
         if (maxErrorCountEl) maxErrorCountEl.value = data.MAX_ERROR_COUNT || 3;
 
+        // 代理配置
+        const proxyConfig = data.GLOBAL_PROXY || {};
+        const proxyEnabledEl = document.getElementById('proxyEnabled');
+        const proxyTypeEl = document.getElementById('proxyType');
+        const proxyHostEl = document.getElementById('proxyHost');
+        const proxyPortEl = document.getElementById('proxyPort');
+        
+        if (proxyEnabledEl) proxyEnabledEl.checked = proxyConfig.enabled || false;
+        if (proxyTypeEl) proxyTypeEl.value = proxyConfig.type || 'http';
+        if (proxyHostEl) proxyHostEl.value = proxyConfig.host || '';
+        if (proxyPortEl) proxyPortEl.value = proxyConfig.port || '';
+
         // 触发提供商配置显示
         handleProviderChange();
         
@@ -252,6 +264,15 @@ async function saveConfiguration() {
     config.CRON_REFRESH_TOKEN = document.getElementById('cronRefreshToken')?.checked || false;
     config.PROVIDER_POOLS_FILE_PATH = document.getElementById('providerPoolsFilePath')?.value || '';
     config.MAX_ERROR_COUNT = parseInt(document.getElementById('maxErrorCount')?.value || 3);
+
+    // 代理配置
+    const proxyPortValue = document.getElementById('proxyPort')?.value;
+    config.GLOBAL_PROXY = {
+        enabled: document.getElementById('proxyEnabled')?.checked || false,
+        type: document.getElementById('proxyType')?.value || 'http',
+        host: document.getElementById('proxyHost')?.value || '',
+        port: proxyPortValue ? parseInt(proxyPortValue) : ''
+    };
 
     try {
         await window.apiClient.post('/config', config);

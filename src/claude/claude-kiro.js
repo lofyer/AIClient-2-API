@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import { getProviderModels } from '../provider-models.js';
+import { createProxyAgent } from '../proxy-utils.js';
 import { countTokens } from '@anthropic-ai/tokenizer';
 import { json } from 'stream/consumers';
 
@@ -265,14 +266,16 @@ function deduplicateToolCalls(toolCalls) {
 }
 
 export class KiroApiService {
-    constructor(config = {}) {
+    constructor(config = {}, globalConfig = null) {
         this.isInitialized = false;
         this.config = config;
+        this.globalConfig = globalConfig;
         this.credPath = config.KIRO_OAUTH_CREDS_DIR_PATH || path.join(os.homedir(), ".aws", "sso", "cache");
         this.credsBase64 = config.KIRO_OAUTH_CREDS_BASE64;
         this.credsText = config.KIRO_OAUTH_CREDS_TEXT;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_KIRO ?? false;
-        console.log(`[Kiro] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}`);
+        this.useProxy = config?.useProxy ?? false;
+        console.log(`[Kiro] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}, Custom proxy ${this.useProxy ? 'enabled' : 'disabled'}`);
         // this.accessToken = config.KIRO_ACCESS_TOKEN;
         // this.refreshToken = config.KIRO_REFRESH_TOKEN;
         // this.clientId = config.KIRO_CLIENT_ID;
@@ -318,18 +321,26 @@ export class KiroApiService {
         const macSha256 = await getMacAddressSha256();
         const kiroVersion = KIRO_CONSTANTS.KIRO_VERSION;
         // 配置 HTTP/HTTPS agent 限制连接池大小，避免资源泄漏
-        const httpAgent = new http.Agent({
+        let httpAgent = new http.Agent({
             keepAlive: true,
             maxSockets: 100,        // 每个主机最多 10 个连接
             maxFreeSockets: 5,     // 最多保留 5 个空闲连接
             timeout: KIRO_CONSTANTS.AXIOS_TIMEOUT,
         });
-        const httpsAgent = new https.Agent({
+        let httpsAgent = new https.Agent({
             keepAlive: true,
             maxSockets: 100,
             maxFreeSockets: 5,
             timeout: KIRO_CONSTANTS.AXIOS_TIMEOUT,
         });
+
+        // 如果启用了自定义代理，使用代理 agent
+        const proxyAgent = createProxyAgent(this.globalConfig, this.useProxy);
+        if (proxyAgent) {
+            httpAgent = proxyAgent;
+            httpsAgent = proxyAgent;
+            console.log(`[Kiro] Using custom proxy agent`);
+        }
         
         const axiosConfig = {
             timeout: KIRO_CONSTANTS.AXIOS_TIMEOUT,
@@ -345,8 +356,8 @@ export class KiroApiService {
             },
         };
         
-        // 根据 useSystemProxy 配置代理设置
-        if (!this.useSystemProxy) {
+        // 根据 useSystemProxy 配置代理设置（如果没有使用自定义代理）
+        if (!this.useSystemProxy && !proxyAgent) {
             axiosConfig.proxy = false;
         }
         

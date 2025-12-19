@@ -351,6 +351,7 @@ function renderProviderList(providers) {
     return providers.map(provider => {
         const isHealthy = provider.isHealthy;
         const isDisabled = provider.isDisabled || false;
+        const useProxy = provider.useProxy || false;
         const lastUsed = provider.lastUsed ? new Date(provider.lastUsed).toLocaleString() : '从未使用';
         const lastHealthCheckTime = provider.lastHealthCheckTime ? new Date(provider.lastHealthCheckTime).toLocaleString() : '从未检测';
         const lastHealthCheckModel = provider.lastHealthCheckModel || '-';
@@ -363,6 +364,8 @@ function renderProviderList(providers) {
         const toggleButtonText = isDisabled ? '启用' : '禁用';
         const toggleButtonIcon = isDisabled ? 'fas fa-play' : 'fas fa-ban';
         const toggleButtonClass = isDisabled ? 'btn-success' : 'btn-warning';
+        const proxyIcon = useProxy ? 'fas fa-globe text-primary' : 'fas fa-globe text-muted';
+        const proxyText = useProxy ? '已启用' : '未启用';
         
         // 构建错误信息显示
         let errorInfoHtml = '';
@@ -391,6 +394,10 @@ function renderProviderList(providers) {
                                 <i class="${disabledIcon}"></i>
                                 状态: ${disabledText}
                             </span> |
+                            <span class="proxy-status">
+                                <i class="${proxyIcon}"></i>
+                                代理: ${proxyText}
+                            </span> |
                             使用次数: ${provider.usageCount || 0} |
                             失败次数: ${provider.errorCount || 0} |
                             最后使用: ${lastUsed}
@@ -408,6 +415,9 @@ function renderProviderList(providers) {
                         ${errorInfoHtml}
                     </div>
                     <div class="provider-actions-group">
+                        <button class="btn-small btn-proxy ${useProxy ? 'btn-primary' : 'btn-outline'}" onclick="window.toggleProviderProxy('${provider.uuid}', event)" title="${useProxy ? '禁用' : '启用'}代理">
+                            <i class="fas fa-globe"></i> ${useProxy ? '禁用代理' : '启用代理'}
+                        </button>
                         <button class="btn-small ${toggleButtonClass}" onclick="window.toggleProviderStatus('${provider.uuid}', event)" title="${toggleButtonText}此提供商">
                             <i class="${toggleButtonIcon}"></i> ${toggleButtonText}
                         </button>
@@ -1548,6 +1558,37 @@ function renderNotSupportedModelsSelector(uuid, models, notSupportedModels = [])
     container.innerHTML = html;
 }
 
+/**
+ * 切换提供商代理状态
+ * @param {string} uuid - 提供商UUID
+ * @param {Event} event - 事件对象
+ */
+async function toggleProviderProxy(uuid, event) {
+    event.stopPropagation();
+    
+    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerType = providerDetail.closest('.provider-modal').getAttribute('data-provider-type');
+    
+    // 获取当前提供商的代理状态
+    const proxyButton = event.target.closest('.btn-proxy');
+    const isCurrentlyUsingProxy = proxyButton.classList.contains('btn-primary');
+    const newProxyState = !isCurrentlyUsingProxy;
+    
+    try {
+        // 更新提供商配置
+        await window.apiClient.put(`/providers/${encodeURIComponent(providerType)}/${uuid}`, {
+            providerConfig: { useProxy: newProxyState }
+        });
+        await window.apiClient.post('/reload-config');
+        showToast(`代理${newProxyState ? '已启用' : '已禁用'}`, 'success');
+        // 重新获取该提供商类型的最新配置
+        await refreshProviderConfig(providerType);
+    } catch (error) {
+        console.error('Failed to toggle provider proxy:', error);
+        showToast(`操作失败: ${error.message}`, 'error');
+    }
+}
+
 // 导出所有函数，并挂载到window对象供HTML调用
 export {
     showProviderManagerModal,
@@ -1561,6 +1602,7 @@ export {
     showAddProviderForm,
     addProvider,
     toggleProviderStatus,
+    toggleProviderProxy,
     resetAllProvidersHealth,
     performHealthCheck,
     loadModelsForProviderType,
@@ -1578,6 +1620,7 @@ window.deleteProvider = deleteProvider;
 window.showAddProviderForm = showAddProviderForm;
 window.addProvider = addProvider;
 window.toggleProviderStatus = toggleProviderStatus;
+window.toggleProviderProxy = toggleProviderProxy;
 window.resetAllProvidersHealth = resetAllProvidersHealth;
 window.performHealthCheck = performHealthCheck;
 window.goToProviderPage = goToProviderPage;

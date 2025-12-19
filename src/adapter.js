@@ -163,9 +163,9 @@ export class AntigravityApiServiceAdapter extends ApiServiceAdapter {
 
 // OpenAI API 服务适配器
 export class OpenAIApiServiceAdapter extends ApiServiceAdapter {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         super();
-        this.openAIApiService = new OpenAIApiService(config);
+        this.openAIApiService = new OpenAIApiService(config, globalConfig);
     }
 
     async generateContent(model, requestBody) {
@@ -194,9 +194,9 @@ export class OpenAIApiServiceAdapter extends ApiServiceAdapter {
 
 // OpenAI Responses API 服务适配器
 export class OpenAIResponsesApiServiceAdapter extends ApiServiceAdapter {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         super();
-        this.openAIResponsesApiService = new OpenAIResponsesApiService(config);
+        this.openAIResponsesApiService = new OpenAIResponsesApiService(config, globalConfig);
     }
 
     async generateContent(model, requestBody) {
@@ -223,9 +223,9 @@ export class OpenAIResponsesApiServiceAdapter extends ApiServiceAdapter {
 
 // Claude API 服务适配器
 export class ClaudeApiServiceAdapter extends ApiServiceAdapter {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         super();
-        this.claudeApiService = new ClaudeApiService(config);
+        this.claudeApiService = new ClaudeApiService(config, globalConfig);
     }
 
     async generateContent(model, requestBody) {
@@ -251,9 +251,9 @@ export class ClaudeApiServiceAdapter extends ApiServiceAdapter {
 
 // Kiro API 服务适配器
 export class KiroApiServiceAdapter extends ApiServiceAdapter {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         super();
-        this.kiroApiService = new KiroApiService(config);
+        this.kiroApiService = new KiroApiService(config, globalConfig);
         // this.kiroApiService.initialize().catch(error => {
         //     console.error("Failed to initialize kiroApiService:", error);
         // });
@@ -310,9 +310,9 @@ export class KiroApiServiceAdapter extends ApiServiceAdapter {
 
 // Qwen API 服务适配器
 export class QwenApiServiceAdapter extends ApiServiceAdapter {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         super();
-        this.qwenApiService = new QwenApiService(config);
+        this.qwenApiService = new QwenApiService(config, globalConfig);
     }
 
     async generateContent(model, requestBody) {
@@ -352,17 +352,19 @@ export class QwenApiServiceAdapter extends ApiServiceAdapter {
 export const serviceInstances = {};
 
 // 服务适配器工厂
-export function getServiceAdapter(config) {
+export function getServiceAdapter(config, globalConfig = null) {
     console.log(`[Adapter] getServiceAdapter, provider: ${config.MODEL_PROVIDER}, uuid: ${config.uuid}`);
     const provider = config.MODEL_PROVIDER;
-    const providerKey = config.uuid ? provider + config.uuid : provider;
+    const useProxy = config.useProxy ?? false;
+    // 将 useProxy 状态加入缓存 key，确保代理配置变化时重新创建实例
+    const providerKey = config.uuid ? `${provider}_${config.uuid}_proxy${useProxy}` : `${provider}_proxy${useProxy}`;
     if (!serviceInstances[providerKey]) {
         switch (provider) {
             case MODEL_PROVIDER.OPENAI_CUSTOM:
-                serviceInstances[providerKey] = new OpenAIApiServiceAdapter(config);
+                serviceInstances[providerKey] = new OpenAIApiServiceAdapter(config, globalConfig);
                 break;
             case MODEL_PROVIDER.OPENAI_CUSTOM_RESPONSES:
-                serviceInstances[providerKey] = new OpenAIResponsesApiServiceAdapter(config);
+                serviceInstances[providerKey] = new OpenAIResponsesApiServiceAdapter(config, globalConfig);
                 break;
             case MODEL_PROVIDER.GEMINI_CLI:
                 serviceInstances[providerKey] = new GeminiApiServiceAdapter(config);
@@ -371,13 +373,13 @@ export function getServiceAdapter(config) {
                 serviceInstances[providerKey] = new AntigravityApiServiceAdapter(config);
                 break;
             case MODEL_PROVIDER.CLAUDE_CUSTOM:
-                serviceInstances[providerKey] = new ClaudeApiServiceAdapter(config);
+                serviceInstances[providerKey] = new ClaudeApiServiceAdapter(config, globalConfig);
                 break;
             case MODEL_PROVIDER.KIRO_API:
-                serviceInstances[providerKey] = new KiroApiServiceAdapter(config);
+                serviceInstances[providerKey] = new KiroApiServiceAdapter(config, globalConfig);
                 break;
             case MODEL_PROVIDER.QWEN_API:
-                serviceInstances[providerKey] = new QwenApiServiceAdapter(config);
+                serviceInstances[providerKey] = new QwenApiServiceAdapter(config, globalConfig);
                 break;
             default:
                 throw new Error(`Unsupported model provider: ${provider}`);

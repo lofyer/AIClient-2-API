@@ -1,32 +1,43 @@
 import axios from 'axios';
 import * as http from 'http';
 import * as https from 'https';
+import { createProxyAgent } from '../proxy-utils.js';
 
 // Assumed OpenAI API specification service for interacting with third-party models
 export class OpenAIApiService {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         if (!config.OPENAI_API_KEY) {
             throw new Error("OpenAI API Key is required for OpenAIApiService.");
         }
         this.config = config;
+        this.globalConfig = globalConfig;
         this.apiKey = config.OPENAI_API_KEY;
         this.baseUrl = config.OPENAI_BASE_URL;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_OPENAI ?? false;
-        console.log(`[OpenAI] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}`);
+        this.useProxy = config?.useProxy ?? false;
+        console.log(`[OpenAI] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}, Custom proxy ${this.useProxy ? 'enabled' : 'disabled'}`);
 
         // 配置 HTTP/HTTPS agent 限制连接池大小，避免资源泄漏
-        const httpAgent = new http.Agent({
+        let httpAgent = new http.Agent({
             keepAlive: true,
             maxSockets: 100,
             maxFreeSockets: 5,
             timeout: 120000,
         });
-        const httpsAgent = new https.Agent({
+        let httpsAgent = new https.Agent({
             keepAlive: true,
             maxSockets: 100,
             maxFreeSockets: 5,
             timeout: 120000,
         });
+
+        // 如果启用了自定义代理，使用代理 agent
+        const proxyAgent = createProxyAgent(globalConfig, this.useProxy);
+        if (proxyAgent) {
+            httpAgent = proxyAgent;
+            httpsAgent = proxyAgent;
+            console.log(`[OpenAI] Using custom proxy agent`);
+        }
 
         const axiosConfig = {
             baseURL: this.baseUrl,
@@ -38,8 +49,8 @@ export class OpenAIApiService {
             },
         };
         
-        // 禁用系统代理以避免HTTPS代理错误
-        if (!this.useSystemProxy) {
+        // 禁用系统代理以避免HTTPS代理错误（如果没有使用自定义代理）
+        if (!this.useSystemProxy && !proxyAgent) {
             axiosConfig.proxy = false;
         }
         
