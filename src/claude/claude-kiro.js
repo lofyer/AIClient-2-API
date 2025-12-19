@@ -1085,7 +1085,7 @@ async initializeAuth(forceRefresh = false) {
         }
         
         const finalModel = MODEL_MAPPING[model] ? model : this.modelName;
-        console.log(`[Kiro] Calling generateContent with model: ${finalModel}`);
+        console.log(`[Kiro] Calling generateContent with model: ${finalModel}, proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
         
         // Estimate input tokens before making the API call
         const inputTokens = this.estimateInputTokens(requestBody);
@@ -1313,6 +1313,24 @@ async initializeAuth(forceRefresh = false) {
             }
 
             console.error('[Kiro] Stream API call failed:', error.message);
+            if (error.response?.data) {
+                // 尝试读取响应体中的错误信息
+                try {
+                    const errorData = error.response.data;
+                    if (typeof errorData === 'string') {
+                        console.error('[Kiro] Error response body:', errorData);
+                    } else if (errorData.pipe) {
+                        // 如果是流，尝试读取
+                        let errorBody = '';
+                        for await (const chunk of errorData) {
+                            errorBody += chunk.toString();
+                        }
+                        console.error('[Kiro] Error response body:', errorBody);
+                    }
+                } catch (e) {
+                    console.error('[Kiro] Could not read error response body');
+                }
+            }
             throw error;
         } finally {
             // 确保流被关闭，释放资源
@@ -1343,7 +1361,7 @@ async initializeAuth(forceRefresh = false) {
         }
         
         const finalModel = MODEL_MAPPING[model] ? model : this.modelName;
-        console.log(`[Kiro] Calling generateContentStream with model: ${finalModel} (real streaming)`);
+        console.log(`[Kiro] Calling generateContentStream with model: ${finalModel} (real streaming), proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
         
         const inputTokens = this.estimateInputTokens(requestBody);
         const messageId = `${uuidv4()}`;
