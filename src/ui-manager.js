@@ -624,8 +624,10 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
             if (newConfig.CLAUDE_API_KEY !== undefined) currentConfig.CLAUDE_API_KEY = newConfig.CLAUDE_API_KEY;
             if (newConfig.CLAUDE_BASE_URL !== undefined) currentConfig.CLAUDE_BASE_URL = newConfig.CLAUDE_BASE_URL;
             if (newConfig.GEMINI_OAUTH_CREDS_BASE64 !== undefined) currentConfig.GEMINI_OAUTH_CREDS_BASE64 = newConfig.GEMINI_OAUTH_CREDS_BASE64;
+            if (newConfig.GEMINI_OAUTH_CREDS_TEXT !== undefined) currentConfig.GEMINI_OAUTH_CREDS_TEXT = newConfig.GEMINI_OAUTH_CREDS_TEXT;
             if (newConfig.GEMINI_OAUTH_CREDS_FILE_PATH !== undefined) currentConfig.GEMINI_OAUTH_CREDS_FILE_PATH = newConfig.GEMINI_OAUTH_CREDS_FILE_PATH;
             if (newConfig.KIRO_OAUTH_CREDS_BASE64 !== undefined) currentConfig.KIRO_OAUTH_CREDS_BASE64 = newConfig.KIRO_OAUTH_CREDS_BASE64;
+            if (newConfig.KIRO_OAUTH_CREDS_TEXT !== undefined) currentConfig.KIRO_OAUTH_CREDS_TEXT = newConfig.KIRO_OAUTH_CREDS_TEXT;
             if (newConfig.KIRO_OAUTH_CREDS_FILE_PATH !== undefined) currentConfig.KIRO_OAUTH_CREDS_FILE_PATH = newConfig.KIRO_OAUTH_CREDS_FILE_PATH;
             if (newConfig.QWEN_OAUTH_CREDS_FILE_PATH !== undefined) currentConfig.QWEN_OAUTH_CREDS_FILE_PATH = newConfig.QWEN_OAUTH_CREDS_FILE_PATH;
             
@@ -686,8 +688,10 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
                     CLAUDE_BASE_URL: currentConfig.CLAUDE_BASE_URL,
                     PROJECT_ID: currentConfig.PROJECT_ID,
                     GEMINI_OAUTH_CREDS_BASE64: currentConfig.GEMINI_OAUTH_CREDS_BASE64,
+                    GEMINI_OAUTH_CREDS_TEXT: currentConfig.GEMINI_OAUTH_CREDS_TEXT,
                     GEMINI_OAUTH_CREDS_FILE_PATH: currentConfig.GEMINI_OAUTH_CREDS_FILE_PATH,
                     KIRO_OAUTH_CREDS_BASE64: currentConfig.KIRO_OAUTH_CREDS_BASE64,
+                    KIRO_OAUTH_CREDS_TEXT: currentConfig.KIRO_OAUTH_CREDS_TEXT,
                     KIRO_OAUTH_CREDS_FILE_PATH: currentConfig.KIRO_OAUTH_CREDS_FILE_PATH,
                     QWEN_OAUTH_CREDS_FILE_PATH: currentConfig.QWEN_OAUTH_CREDS_FILE_PATH,
                     // Provider URLs
@@ -2300,6 +2304,8 @@ async function getProviderTypeUsage(providerType, currentConfig, providerPoolMan
         const instanceResult = {
             uuid: provider.uuid || 'unknown',
             name: getProviderDisplayName(provider, providerType),
+            customName: provider.customName || null,
+            credFilePath: getProviderCredFilePath(provider, providerType),
             isHealthy: provider.isHealthy !== false,
             isDisabled: provider.isDisabled === true,
             success: false,
@@ -2398,6 +2404,11 @@ async function getAdapterUsage(adapter, providerType) {
  * @returns {string} 显示名称
  */
 function getProviderDisplayName(provider, providerType) {
+    // 优先使用自定义名称
+    if (provider.customName) {
+        return provider.customName;
+    }
+
     // 尝试从凭据文件路径提取名称
     const credPathKey = {
         'claude-kiro-oauth': 'KIRO_OAUTH_CREDS_FILE_PATH',
@@ -2414,4 +2425,28 @@ function getProviderDisplayName(provider, providerType) {
     }
 
     return provider.uuid || '未命名';
+}
+
+/**
+ * 获取提供商凭据文件路径
+ * @param {Object} provider - 提供商配置
+ * @param {string} providerType - 提供商类型
+ * @returns {string|null} 凭据文件路径
+ */
+function getProviderCredFilePath(provider, providerType) {
+    const credPathKey = {
+        'claude-kiro-oauth': 'KIRO_OAUTH_CREDS_FILE_PATH',
+        'gemini-cli-oauth': 'GEMINI_OAUTH_CREDS_FILE_PATH',
+        'gemini-antigravity': 'ANTIGRAVITY_OAUTH_CREDS_FILE_PATH',
+        'openai-qwen-oauth': 'QWEN_OAUTH_CREDS_FILE_PATH'
+    }[providerType];
+
+    if (credPathKey && provider[credPathKey]) {
+        const filePath = provider[credPathKey];
+        const fileName = path.basename(filePath);
+        const dirName = path.basename(path.dirname(filePath));
+        return `${dirName}/${fileName}`;
+    }
+
+    return null;
 }

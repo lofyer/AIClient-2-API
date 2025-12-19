@@ -207,6 +207,7 @@ export class GeminiApiService {
         this.config = config;
         this.host = config.HOST;
         this.oauthCredsBase64 = config.GEMINI_OAUTH_CREDS_BASE64;
+        this.oauthCredsText = config.GEMINI_OAUTH_CREDS_TEXT;
         this.oauthCredsFilePath = config.GEMINI_OAUTH_CREDS_FILE_PATH;
         this.projectId = config.PROJECT_ID;
 
@@ -245,6 +246,18 @@ export class GeminiApiService {
             } catch (error) {
                 console.error('[Gemini Auth] Failed to parse base64 OAuth credentials:', error);
                 throw new Error(`Failed to load OAuth credentials from base64 string.`);
+            }
+        }
+
+        if (this.oauthCredsText) {
+            try {
+                const credentials = JSON.parse(this.oauthCredsText);
+                this.authClient.setCredentials(credentials);
+                console.log('[Gemini Auth] Authentication configured successfully from text content.');
+                return;
+            } catch (error) {
+                console.error('[Gemini Auth] Failed to parse text OAuth credentials:', error);
+                throw new Error(`Failed to load OAuth credentials from text content.`);
             }
         }
 

@@ -270,6 +270,7 @@ export class KiroApiService {
         this.config = config;
         this.credPath = config.KIRO_OAUTH_CREDS_DIR_PATH || path.join(os.homedir(), ".aws", "sso", "cache");
         this.credsBase64 = config.KIRO_OAUTH_CREDS_BASE64;
+        this.credsText = config.KIRO_OAUTH_CREDS_TEXT;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_KIRO ?? false;
         console.log(`[Kiro] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}`);
         // this.accessToken = config.KIRO_ACCESS_TOKEN;
@@ -282,7 +283,7 @@ export class KiroApiService {
         // this.baseUrl = KIRO_CONSTANTS.BASE_URL;
         // this.amazonQUrl = KIRO_CONSTANTS.AMAZON_Q_URL;
 
-        // Add kiro-oauth-creds-base64 and kiro-oauth-creds-file to config
+        // Add kiro-oauth-creds-base64, kiro-oauth-creds-text and kiro-oauth-creds-file to config
         if (config.KIRO_OAUTH_CREDS_BASE64) {
             try {
                 const decodedCreds = Buffer.from(config.KIRO_OAUTH_CREDS_BASE64, 'base64').toString('utf8');
@@ -292,6 +293,15 @@ export class KiroApiService {
                 console.info('[Kiro] Successfully decoded Base64 credentials in constructor.');
             } catch (error) {
                 console.error(`[Kiro] Failed to parse Base64 credentials in constructor: ${error.message}`);
+            }
+        } else if (config.KIRO_OAUTH_CREDS_TEXT) {
+            try {
+                const parsedCreds = JSON.parse(config.KIRO_OAUTH_CREDS_TEXT);
+                // Store parsedCreds to be merged in initializeAuth (reuse base64Creds field)
+                this.base64Creds = parsedCreds;
+                console.info('[Kiro] Successfully parsed text credentials in constructor.');
+            } catch (error) {
+                console.error(`[Kiro] Failed to parse text credentials in constructor: ${error.message}`);
             }
         } else if (config.KIRO_OAUTH_CREDS_FILE_PATH) {
             this.credsFilePath = config.KIRO_OAUTH_CREDS_FILE_PATH;

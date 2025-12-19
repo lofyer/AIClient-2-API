@@ -208,6 +208,12 @@ function createProviderGroup(providerType, instances) {
     const instanceCount = instances.length;
     const successCount = instances.filter(i => i.success).length;
     
+    // 计算所有实例的总用量
+    const groupTotalUsage = calculateGroupTotalUsage(instances);
+    const totalUsageHTML = groupTotalUsage.hasData 
+        ? `<span class="group-total-usage">${formatNumber(groupTotalUsage.used)} / ${formatNumber(groupTotalUsage.limit)} (${groupTotalUsage.percent.toFixed(1)}%)</span>`
+        : `<span class="instance-count">${instanceCount} 个实例</span>`;
+    
     // 分组头部（可点击折叠）
     const header = document.createElement('div');
     header.className = 'usage-group-header';
@@ -216,7 +222,7 @@ function createProviderGroup(providerType, instances) {
             <i class="fas fa-chevron-right toggle-icon"></i>
             <i class="${providerIcon} provider-icon"></i>
             <span class="provider-name">${providerDisplayName}</span>
-            <span class="instance-count">${instanceCount} 个实例</span>
+            ${totalUsageHTML}
             <span class="success-count ${successCount === instanceCount ? 'all-success' : ''}">${successCount}/${instanceCount} 成功</span>
         </div>
     `;
@@ -285,6 +291,15 @@ function createInstanceUsageCard(instance, providerType) {
         </div>
     ` : '';
 
+    // 构建名称显示：如果有自定义名称则显示自定义名称，同时显示文件路径
+    const displayName = instance.customName || instance.name || instance.uuid;
+    const credFilePathHTML = instance.credFilePath ? `
+        <div class="instance-cred-path">
+            <i class="fas fa-file-alt"></i>
+            <span title="${instance.credFilePath}">${instance.credFilePath}</span>
+        </div>
+    ` : '';
+
     header.innerHTML = `
         <div class="instance-header-top">
             <div class="instance-provider-type">
@@ -297,8 +312,9 @@ function createInstanceUsageCard(instance, providerType) {
             </div>
         </div>
         <div class="instance-name">
-            <span class="instance-name-text" title="${instance.name || instance.uuid}">${instance.name || instance.uuid}</span>
+            <span class="instance-name-text" title="${displayName}">${displayName}</span>
         </div>
+        ${credFilePathHTML}
         ${userInfoHTML}
     `;
     card.appendChild(header);
@@ -336,37 +352,28 @@ function renderUsageDetails(usage) {
     
     // 总用量进度条
     if (totalUsage.hasData) {
-        const totalSection = document.createElement('div');
-        totalSection.className = 'usage-section total-usage';
-        
         const progressClass = totalUsage.percent >= 90 ? 'danger' : (totalUsage.percent >= 70 ? 'warning' : 'normal');
         
-        totalSection.innerHTML = `
-            <div class="total-usage-header">
-                <span class="total-label"><i class="fas fa-chart-pie"></i> 总用量</span>
-                <span class="total-value">${formatNumber(totalUsage.used)} / ${formatNumber(totalUsage.limit)}</span>
+        const totalHTML = `
+            <div class="total-usage">
+                <div class="total-usage-header">
+                    <span class="total-label"><i class="fas fa-chart-pie"></i> 总用量</span>
+                    <span class="total-value">${formatNumber(totalUsage.used)} / ${formatNumber(totalUsage.limit)}</span>
+                </div>
+                <div class="progress-bar ${progressClass}">
+                    <div class="progress-fill" style="width: ${totalUsage.percent}%"></div>
+                </div>
+                <div class="total-percent">${totalUsage.percent.toFixed(2)}%</div>
             </div>
-            <div class="progress-bar ${progressClass}">
-                <div class="progress-fill" style="width: ${totalUsage.percent}%"></div>
-            </div>
-            <div class="total-percent">${totalUsage.percent.toFixed(2)}%</div>
         `;
-        container.appendChild(totalSection);
+        container.insertAdjacentHTML('beforeend', totalHTML);
     }
 
     // 用量明细（包含免费试用和奖励信息）
     if (usage.usageBreakdown && usage.usageBreakdown.length > 0) {
-        const breakdownSection = document.createElement('div');
-        breakdownSection.className = 'usage-section usage-breakdown-compact';
-        
-        let breakdownHTML = '';
-        
         for (const breakdown of usage.usageBreakdown) {
-            breakdownHTML += createUsageBreakdownHTML(breakdown);
+            container.insertAdjacentHTML('beforeend', createUsageBreakdownHTML(breakdown));
         }
-        
-        breakdownSection.innerHTML = breakdownHTML;
-        container.appendChild(breakdownSection);
     }
 
     return container;
@@ -467,6 +474,37 @@ function calculateTotalUsage(usageBreakdown) {
         used: totalUsed,
         limit: totalLimit,
         percent: percent
+    };
+}
+
+/**
+ * 计算分组内所有实例的总用量
+ * @param {Array} instances - 实例数组
+ * @returns {Object} 总用量信息
+ */
+function calculateGroupTotalUsage(instances) {
+    let totalUsed = 0;
+    let totalLimit = 0;
+    let hasData = false;
+
+    for (const instance of instances) {
+        if (instance.success && instance.usage && instance.usage.usageBreakdown) {
+            const instanceUsage = calculateTotalUsage(instance.usage.usageBreakdown);
+            if (instanceUsage.hasData) {
+                hasData = true;
+                totalUsed += instanceUsage.used;
+                totalLimit += instanceUsage.limit;
+            }
+        }
+    }
+
+    const percent = totalLimit > 0 ? Math.min(100, (totalUsed / totalLimit) * 100) : 0;
+
+    return {
+        hasData,
+        used: totalUsed,
+        limit: totalLimit,
+        percent
     };
 }
 
