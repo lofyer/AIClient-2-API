@@ -2,6 +2,8 @@
 
 import { elements } from './constants.js';
 
+const ACTIVE_SECTION_KEY = 'activeSection';
+
 /**
  * 初始化导航功能
  */
@@ -9,6 +11,12 @@ function initNavigation() {
     if (!elements.navItems || !elements.sections) {
         console.warn('导航元素未找到');
         return;
+    }
+
+    // 恢复上次访问的菜单位置
+    const savedSection = localStorage.getItem(ACTIVE_SECTION_KEY);
+    if (savedSection) {
+        switchToSection(savedSection);
     }
 
     elements.navItems.forEach(item => {
@@ -27,6 +35,9 @@ function initNavigation() {
                     section.classList.add('active');
                 }
             });
+
+            // 保存当前菜单位置到 localStorage
+            localStorage.setItem(ACTIVE_SECTION_KEY, sectionId);
         });
     });
 }

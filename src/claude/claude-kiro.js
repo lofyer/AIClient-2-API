@@ -1736,7 +1736,7 @@ async initializeAuth(forceRefresh = false) {
             const currentTime = new Date();
             const cronNearMinutesInMillis = (this.config.CRON_NEAR_MINUTES || 10) * 60 * 1000;
             const thresholdTime = new Date(currentTime.getTime() + cronNearMinutesInMillis);
-            console.log(`[Kiro] Expiry date: ${expirationTime.getTime()}, Current time: ${currentTime.getTime()}, ${this.config.CRON_NEAR_MINUTES || 10} minutes from now: ${thresholdTime.getTime()}`);
+            console.log(`[Kiro] Expiry date: ${expirationTime.toISOString()} (${expirationTime.getTime()}), Current time: ${currentTime.toISOString()} (${currentTime.getTime()}), ${this.config.CRON_NEAR_MINUTES || 10} minutes from now: ${thresholdTime.toISOString()} (${thresholdTime.getTime()})`);
             return expirationTime.getTime() <= thresholdTime.getTime();
         } catch (error) {
             console.error(`[Kiro] Error checking expiry date: ${this.expiresAt}, Error: ${error.message}`);

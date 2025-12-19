@@ -125,13 +125,18 @@ function handleProviderChange() {
 function handleGeminiCredsTypeChange(event) {
     const selectedType = event.target.value;
     const base64Group = document.getElementById('geminiCredsBase64Group');
+    const textGroup = document.getElementById('geminiCredsTextGroup');
     const fileGroup = document.getElementById('geminiCredsFileGroup');
+    
+    if (base64Group) base64Group.style.display = 'none';
+    if (textGroup) textGroup.style.display = 'none';
+    if (fileGroup) fileGroup.style.display = 'none';
     
     if (selectedType === 'base64') {
         if (base64Group) base64Group.style.display = 'block';
-        if (fileGroup) fileGroup.style.display = 'none';
+    } else if (selectedType === 'text') {
+        if (textGroup) textGroup.style.display = 'block';
     } else {
-        if (base64Group) base64Group.style.display = 'none';
         if (fileGroup) fileGroup.style.display = 'block';
     }
 }
@@ -143,13 +148,18 @@ function handleGeminiCredsTypeChange(event) {
 function handleKiroCredsTypeChange(event) {
     const selectedType = event.target.value;
     const base64Group = document.getElementById('kiroCredsBase64Group');
+    const textGroup = document.getElementById('kiroCredsTextGroup');
     const fileGroup = document.getElementById('kiroCredsFileGroup');
+    
+    if (base64Group) base64Group.style.display = 'none';
+    if (textGroup) textGroup.style.display = 'none';
+    if (fileGroup) fileGroup.style.display = 'none';
     
     if (selectedType === 'base64') {
         if (base64Group) base64Group.style.display = 'block';
-        if (fileGroup) fileGroup.style.display = 'none';
+    } else if (selectedType === 'text') {
+        if (textGroup) textGroup.style.display = 'block';
     } else {
-        if (base64Group) base64Group.style.display = 'none';
         if (fileGroup) fileGroup.style.display = 'block';
     }
 }

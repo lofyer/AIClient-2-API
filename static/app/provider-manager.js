@@ -115,8 +115,7 @@ function renderProviders(providers) {
         'openaiResponses-custom'
     ];
     
-    // 获取所有提供商类型并按指定顺序排序
-    // 优先显示预定义的所有提供商类型，即使某些提供商没有数据也要显示
+    // 获取所有提供商类型并按节点数量降序排序
     let allProviderTypes;
     if (hasProviders) {
         // 合并预定义类型和实际存在的类型，确保显示所有预定义提供商
@@ -125,8 +124,19 @@ function renderProviders(providers) {
     } else {
         allProviderTypes = providerDisplayOrder;
     }
-    const sortedProviderTypes = providerDisplayOrder.filter(type => allProviderTypes.includes(type))
-        .concat(allProviderTypes.filter(type => !providerDisplayOrder.includes(type)));
+    
+    // 按节点数量降序排序，节点数相同时按预定义顺序排序
+    const sortedProviderTypes = allProviderTypes.sort((a, b) => {
+        const countA = hasProviders && providers[a] ? providers[a].length : 0;
+        const countB = hasProviders && providers[b] ? providers[b].length : 0;
+        if (countB !== countA) {
+            return countB - countA; // 节点数量降序
+        }
+        // 节点数相同时，按预定义顺序排序
+        const indexA = providerDisplayOrder.indexOf(a);
+        const indexB = providerDisplayOrder.indexOf(b);
+        return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+    });
     
     // 计算总统计
     let totalAccounts = 0;

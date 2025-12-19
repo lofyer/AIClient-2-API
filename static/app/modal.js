@@ -925,11 +925,14 @@ async function deleteProvider(uuid, event) {
     const providerType = providerDetail.closest('.provider-modal').getAttribute('data-provider-type');
     
     try {
-        await window.apiClient.delete(`/providers/${encodeURIComponent(providerType)}/${uuid}`);
-        await window.apiClient.post('/reload-config');
-        showToast('提供商配置删除成功', 'success');
-        // 重新获取最新配置
-        await refreshProviderConfig(providerType);
+        const response = await window.apiClient.delete(`/providers/${encodeURIComponent(providerType)}/${uuid}`);
+        if (response.success) {
+            showToast('提供商配置删除成功', 'success');
+            // 直接刷新当前提供商类型的配置，不需要 reload-config
+            await refreshProviderConfig(providerType);
+        } else {
+            showToast('删除失败: ' + (response.error?.message || '未知错误'), 'error');
+        }
     } catch (error) {
         console.error('Failed to delete provider:', error);
         showToast('删除失败: ' + error.message, 'error');
@@ -1081,13 +1084,15 @@ function showAddProviderForm(providerType) {
 function addDynamicConfigFields(form, providerType) {
     const configFields = form.querySelector('#dynamicConfigFields');
     
+    // 支持多种上传方式的提供商
+    const multiUploadProviders = ['gemini-cli-oauth', 'claude-kiro-oauth'];
+    
     // 获取该提供商类型的字段配置（已经在 utils.js 中包含了 URL 字段）
     const allFields = getProviderTypeFields(providerType);
     
     // 过滤掉已经在 form-grid 中硬编码显示的三个基础字段，避免重复
     const baseFields = ['customName', 'checkModelName', 'checkHealth'];
     const filteredFields = allFields.filter(f => !baseFields.some(bf => f.id.toLowerCase().includes(bf.toLowerCase())));
-
     let fields = '';
     
     if (filteredFields.length > 0) {
@@ -1100,6 +1105,8 @@ function addDynamicConfigFields(form, providerType) {
             const isPassword1 = field1.type === 'password';
             // 检查是否为OAuth凭据文件路径字段
             const isOAuthFilePath1 = field1.id.includes('OauthCredsFilePath');
+            // 检查是否支持多种上传方式
+            const isMultiUpload1 = isOAuthFilePath1 && multiUploadProviders.includes(providerType);
             
             if (isPassword1) {
                 fields += `
@@ -1113,8 +1120,49 @@ function addDynamicConfigFields(form, providerType) {
                         </div>
                     </div>
                 `;
+            } else if (isMultiUpload1) {
+                // 支持多种上传方式的OAuth凭据字段
+                const isKiroField = field1.id.includes('Kiro');
+                const radioName = `new${field1.id}Type`;
+                fields += `
+                    <div class="form-group full-width-field">
+                        <label>OAuth凭据</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="${radioName}" value="file" checked>
+                                文件路径
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="${radioName}" value="base64">
+                                Base64编码
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="${radioName}" value="text">
+                                文本内容
+                            </label>
+                        </div>
+                        <div class="oauth-input-groups" data-field-id="${field1.id}">
+                            <div class="oauth-input-group" data-type="file">
+                                <div class="file-input-group">
+                                    <input type="text" id="new${field1.id}" class="form-control" placeholder="${field1.placeholder || ''}" value="${field1.value || ''}">
+                                    <button type="button" class="btn btn-outline upload-btn" data-target="new${field1.id}" aria-label="上传文件">
+                                        <i class="fas fa-upload"></i>
+                                    </button>
+                                </div>
+                                ${isKiroField ? '<small class="form-text"><i class="fas fa-info-circle"></i> 使用 AWS 登录方式时，请确保授权文件中包含 <code>clientId</code> 和 <code>clientSecret</code> 字段</small>' : ''}
+                            </div>
+                            <div class="oauth-input-group" data-type="base64" style="display: none;">
+                                <textarea id="new${field1.id}Base64" class="form-control" rows="3" placeholder="请输入Base64编码的OAuth凭据"></textarea>
+                            </div>
+                            <div class="oauth-input-group" data-type="text" style="display: none;">
+                                <textarea id="new${field1.id}Text" class="form-control" rows="3" placeholder="请直接粘贴OAuth凭据JSON内容"></textarea>
+                                ${isKiroField ? '<small class="form-text"><i class="fas fa-info-circle"></i> 使用 AWS 登录方式时，请确保授权文件中包含 <code>clientId</code> 和 <code>clientSecret</code> 字段</small>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
             } else if (isOAuthFilePath1) {
-                // OAuth凭据文件路径字段，添加上传按钮
+                // 普通OAuth凭据文件路径字段，只有上传按钮
                 const isKiroField = field1.id.includes('Kiro');
                 fields += `
                     <div class="form-group">
@@ -1143,6 +1191,8 @@ function addDynamicConfigFields(form, providerType) {
                 const isPassword2 = field2.type === 'password';
                 // 检查是否为OAuth凭据文件路径字段
                 const isOAuthFilePath2 = field2.id.includes('OauthCredsFilePath');
+                // 检查是否支持多种上传方式
+                const isMultiUpload2 = isOAuthFilePath2 && multiUploadProviders.includes(providerType);
                 
                 if (isPassword2) {
                     fields += `
@@ -1156,8 +1206,49 @@ function addDynamicConfigFields(form, providerType) {
                             </div>
                         </div>
                     `;
+                } else if (isMultiUpload2) {
+                    // 支持多种上传方式的OAuth凭据字段
+                    const isKiroField = field2.id.includes('Kiro');
+                    const radioName = `new${field2.id}Type`;
+                    fields += `
+                        <div class="form-group full-width-field">
+                            <label>OAuth凭据</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="${radioName}" value="file" checked>
+                                    文件路径
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="${radioName}" value="base64">
+                                    Base64编码
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="${radioName}" value="text">
+                                    文本内容
+                                </label>
+                            </div>
+                            <div class="oauth-input-groups" data-field-id="${field2.id}">
+                                <div class="oauth-input-group" data-type="file">
+                                    <div class="file-input-group">
+                                        <input type="text" id="new${field2.id}" class="form-control" placeholder="${field2.placeholder || ''}" value="${field2.value || ''}">
+                                        <button type="button" class="btn btn-outline upload-btn" data-target="new${field2.id}" aria-label="上传文件">
+                                            <i class="fas fa-upload"></i>
+                                        </button>
+                                    </div>
+                                    ${isKiroField ? '<small class="form-text"><i class="fas fa-info-circle"></i> 使用 AWS 登录方式时，请确保授权文件中包含 <code>clientId</code> 和 <code>clientSecret</code> 字段</small>' : ''}
+                                </div>
+                                <div class="oauth-input-group" data-type="base64" style="display: none;">
+                                    <textarea id="new${field2.id}Base64" class="form-control" rows="3" placeholder="请输入Base64编码的OAuth凭据"></textarea>
+                                </div>
+                                <div class="oauth-input-group" data-type="text" style="display: none;">
+                                    <textarea id="new${field2.id}Text" class="form-control" rows="3" placeholder="请直接粘贴OAuth凭据JSON内容"></textarea>
+                                    ${isKiroField ? '<small class="form-text"><i class="fas fa-info-circle"></i> 使用 AWS 登录方式时，请确保授权文件中包含 <code>clientId</code> 和 <code>clientSecret</code> 字段</small>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
                 } else if (isOAuthFilePath2) {
-                    // OAuth凭据文件路径字段，添加上传按钮
+                    // 普通OAuth凭据文件路径字段，只有上传按钮
                     const isKiroField = field2.id.includes('Kiro');
                     fields += `
                         <div class="form-group">
@@ -1188,6 +1279,35 @@ function addDynamicConfigFields(form, providerType) {
     }
     
     configFields.innerHTML = fields;
+    
+    // 绑定OAuth凭据类型切换事件
+    bindOAuthTypeChangeListeners(form);
+}
+
+/**
+ * 绑定OAuth凭据类型切换事件
+ * @param {HTMLElement} form - 表单元素
+ */
+function bindOAuthTypeChangeListeners(form) {
+    const radioGroups = form.querySelectorAll('.radio-group');
+    radioGroups.forEach(group => {
+        const radios = group.querySelectorAll('input[type="radio"]');
+        radios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                const selectedType = this.value;
+                const formGroup = this.closest('.form-group');
+                const inputGroups = formGroup.querySelectorAll('.oauth-input-group');
+                
+                inputGroups.forEach(inputGroup => {
+                    if (inputGroup.dataset.type === selectedType) {
+                        inputGroup.style.display = 'block';
+                    } else {
+                        inputGroup.style.display = 'none';
+                    }
+                });
+            });
+        });
+    });
 }
 
 /**
@@ -1230,12 +1350,33 @@ async function addProvider(providerType) {
         checkHealth
     };
     
+    // 支持多种上传方式的提供商
+    const multiUploadProviders = ['gemini-cli-oauth', 'claude-kiro-oauth'];
+    
     // 根据提供商类型动态收集配置字段（自动匹配 utils.js 中的定义）
     const allFields = getProviderTypeFields(providerType);
     allFields.forEach(field => {
-        const element = document.getElementById(`new${field.id}`);
-        if (element) {
-            providerConfig[field.id] = element.value || '';
+        // 检查是否为支持多种上传方式的OAuth凭据字段
+        const isOAuthFilePath = field.id.includes('OauthCredsFilePath');
+        const isMultiUpload = isOAuthFilePath && multiUploadProviders.includes(providerType);
+        
+        if (isMultiUpload) {
+            // 获取选中的凭据类型
+            const credsType = document.querySelector(`input[name="new${field.id}Type"]:checked`)?.value || 'file';
+            if (credsType === 'base64') {
+                const base64Key = field.id.replace('FilePath', 'Base64').replace('FILE_PATH', 'BASE64');
+                providerConfig[base64Key] = document.getElementById(`new${field.id}Base64`)?.value || '';
+            } else if (credsType === 'text') {
+                const textKey = field.id.replace('FilePath', 'Text').replace('FILE_PATH', 'TEXT');
+                providerConfig[textKey] = document.getElementById(`new${field.id}Text`)?.value || '';
+            } else {
+                providerConfig[field.id] = document.getElementById(`new${field.id}`)?.value || '';
+            }
+        } else {
+            const element = document.getElementById(`new${field.id}`);
+            if (element) {
+                providerConfig[field.id] = element.value || '';
+            }
         }
     });
     

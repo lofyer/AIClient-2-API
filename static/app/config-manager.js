@@ -107,16 +107,34 @@ async function loadConfiguration() {
         // 触发提供商配置显示
         handleProviderChange();
         
+        // Gemini 文本内容
+        const geminiOauthCredsTextEl = document.getElementById('geminiOauthCredsText');
+        if (geminiOauthCredsTextEl) geminiOauthCredsTextEl.value = data.GEMINI_OAUTH_CREDS_TEXT || '';
+        
         // 根据Gemini凭据类型设置显示
-        const geminiCredsType = data.GEMINI_OAUTH_CREDS_BASE64 ? 'base64' : 'file';
+        let geminiCredsType = 'file';
+        if (data.GEMINI_OAUTH_CREDS_BASE64) {
+            geminiCredsType = 'base64';
+        } else if (data.GEMINI_OAUTH_CREDS_TEXT) {
+            geminiCredsType = 'text';
+        }
         const geminiRadio = document.querySelector(`input[name="geminiCredsType"][value="${geminiCredsType}"]`);
         if (geminiRadio) {
             geminiRadio.checked = true;
             handleGeminiCredsTypeChange({ target: geminiRadio });
         }
         
+        // Kiro 文本内容
+        const kiroOauthCredsTextEl = document.getElementById('kiroOauthCredsText');
+        if (kiroOauthCredsTextEl) kiroOauthCredsTextEl.value = data.KIRO_OAUTH_CREDS_TEXT || '';
+        
         // 根据Kiro凭据类型设置显示
-        const kiroCredsType = data.KIRO_OAUTH_CREDS_BASE64 ? 'base64' : 'file';
+        let kiroCredsType = 'file';
+        if (data.KIRO_OAUTH_CREDS_BASE64) {
+            kiroCredsType = 'base64';
+        } else if (data.KIRO_OAUTH_CREDS_TEXT) {
+            kiroCredsType = 'text';
+        }
         const kiroRadio = document.querySelector(`input[name="kiroCredsType"][value="${kiroCredsType}"]`);
         if (kiroRadio) {
             kiroRadio.checked = true;
@@ -161,9 +179,15 @@ async function saveConfiguration() {
             const geminiCredsType = document.querySelector('input[name="geminiCredsType"]:checked')?.value;
             if (geminiCredsType === 'base64') {
                 config.GEMINI_OAUTH_CREDS_BASE64 = document.getElementById('geminiOauthCredsBase64')?.value || '';
+                config.GEMINI_OAUTH_CREDS_TEXT = null;
+                config.GEMINI_OAUTH_CREDS_FILE_PATH = null;
+            } else if (geminiCredsType === 'text') {
+                config.GEMINI_OAUTH_CREDS_BASE64 = null;
+                config.GEMINI_OAUTH_CREDS_TEXT = document.getElementById('geminiOauthCredsText')?.value || '';
                 config.GEMINI_OAUTH_CREDS_FILE_PATH = null;
             } else {
                 config.GEMINI_OAUTH_CREDS_BASE64 = null;
+                config.GEMINI_OAUTH_CREDS_TEXT = null;
                 config.GEMINI_OAUTH_CREDS_FILE_PATH = document.getElementById('geminiOauthCredsFilePath')?.value || '';
             }
             config.GEMINI_BASE_URL = document.getElementById('geminiBaseUrl')?.value || null;
@@ -189,9 +213,15 @@ async function saveConfiguration() {
             const kiroCredsType = document.querySelector('input[name="kiroCredsType"]:checked')?.value;
             if (kiroCredsType === 'base64') {
                 config.KIRO_OAUTH_CREDS_BASE64 = document.getElementById('kiroOauthCredsBase64')?.value || '';
+                config.KIRO_OAUTH_CREDS_TEXT = null;
+                config.KIRO_OAUTH_CREDS_FILE_PATH = null;
+            } else if (kiroCredsType === 'text') {
+                config.KIRO_OAUTH_CREDS_BASE64 = null;
+                config.KIRO_OAUTH_CREDS_TEXT = document.getElementById('kiroOauthCredsText')?.value || '';
                 config.KIRO_OAUTH_CREDS_FILE_PATH = null;
             } else {
                 config.KIRO_OAUTH_CREDS_BASE64 = null;
+                config.KIRO_OAUTH_CREDS_TEXT = null;
                 config.KIRO_OAUTH_CREDS_FILE_PATH = document.getElementById('kiroOauthCredsFilePath')?.value || '';
             }
             config.KIRO_BASE_URL = document.getElementById('kiroBaseUrl')?.value || null;
