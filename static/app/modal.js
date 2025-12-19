@@ -521,10 +521,31 @@ function renderProviderConfig(provider) {
         const field1Value = provider[field1Key];
         const field1IsPassword = field1Key.toLowerCase().includes('key') || field1Key.toLowerCase().includes('password');
         const field1IsOAuthFilePath = field1Key.includes('OAUTH_CREDS_FILE_PATH');
+        const field1IsOAuthText = field1Key.includes('OAUTH_CREDS_TEXT');
         const field1DisplayValue = field1IsPassword && field1Value ? '••••••••' : (field1Value || '');
         const field1Def = fieldConfigs.find(f => f.id === field1Key) || fieldConfigs.find(f => f.id.toUpperCase() === field1Key.toUpperCase()) || {};
         
-        if (field1IsPassword) {
+        if (field1IsOAuthText) {
+            // OAuth凭据文本字段，使用textarea显示
+            html += `
+                <div class="config-item full-width">
+                    <label>${field1Label}</label>
+                    <textarea
+                           id="edit-${provider.uuid}-${field1Key}"
+                           readonly
+                           data-config-key="${field1Key}"
+                           data-config-value="${(field1Value || '').replace(/"/g, '&quot;')}"
+                           rows="4"
+                           style="width: 100%; font-family: monospace; font-size: 12px;">${field1Value || ''}</textarea>
+                </div>
+            `;
+            // 跳过第二个字段的处理，因为textarea占满整行
+            if (i + 1 < otherFields.length) {
+                i--; // 让下一次循环重新处理
+            }
+            html += '</div>';
+            continue;
+        } else if (field1IsPassword) {
             html += `
                 <div class="config-item">
                     <label>${field1Label}</label>
@@ -581,10 +602,27 @@ function renderProviderConfig(provider) {
             const field2Value = provider[field2Key];
             const field2IsPassword = field2Key.toLowerCase().includes('key') || field2Key.toLowerCase().includes('password');
             const field2IsOAuthFilePath = field2Key.includes('OAUTH_CREDS_FILE_PATH');
+            const field2IsOAuthText = field2Key.includes('OAUTH_CREDS_TEXT');
             const field2DisplayValue = field2IsPassword && field2Value ? '••••••••' : (field2Value || '');
             const field2Def = fieldConfigs.find(f => f.id === field2Key) || fieldConfigs.find(f => f.id.toUpperCase() === field2Key.toUpperCase()) || {};
             
-            if (field2IsPassword) {
+            if (field2IsOAuthText) {
+                // OAuth凭据文本字段，使用textarea显示，关闭当前行并单独占一行
+                html += '</div>';
+                html += '<div class="form-grid">';
+                html += `
+                    <div class="config-item full-width">
+                        <label>${field2Label}</label>
+                        <textarea
+                               id="edit-${provider.uuid}-${field2Key}"
+                               readonly
+                               data-config-key="${field2Key}"
+                               data-config-value="${(field2Value || '').replace(/"/g, '&quot;')}"
+                               rows="4"
+                               style="width: 100%; font-family: monospace; font-size: 12px;">${field2Value || ''}</textarea>
+                    </div>
+                `;
+            } else if (field2IsPassword) {
                 html += `
                     <div class="config-item">
                         <label>${field2Label}</label>
@@ -747,6 +785,7 @@ function editProvider(uuid, event) {
     
     const providerDetail = event.target.closest('.provider-item-detail');
     const configInputs = providerDetail.querySelectorAll('input[data-config-key]');
+    const configTextareas = providerDetail.querySelectorAll('textarea[data-config-key]');
     const configSelects = providerDetail.querySelectorAll('select[data-config-key]');
     const content = providerDetail.querySelector(`#content-${uuid}`);
     
@@ -764,6 +803,11 @@ function editProvider(uuid, event) {
                 const actualValue = input.dataset.configValue;
                 input.value = actualValue;
             }
+        });
+        
+        // 切换textarea为可编辑状态
+        configTextareas.forEach(textarea => {
+            textarea.readOnly = false;
         });
         
         // 启用文件上传按钮
@@ -819,6 +863,7 @@ function cancelEdit(uuid, event) {
     
     const providerDetail = event.target.closest('.provider-item-detail');
     const configInputs = providerDetail.querySelectorAll('input[data-config-key]');
+    const configTextareas = providerDetail.querySelectorAll('textarea[data-config-key]');
     const configSelects = providerDetail.querySelectorAll('select[data-config-key]');
     
     // 恢复输入框为只读状态
@@ -829,6 +874,14 @@ function cancelEdit(uuid, event) {
             const actualValue = input.dataset.configValue;
             input.value = actualValue ? '••••••••' : '';
         }
+    });
+    
+    // 恢复textarea为只读状态
+    configTextareas.forEach(textarea => {
+        textarea.readOnly = true;
+        // 恢复原始值
+        const originalValue = textarea.dataset.configValue;
+        textarea.value = originalValue || '';
     });
     
     // 禁用模型复选框
@@ -887,12 +940,19 @@ async function saveProvider(uuid, event) {
     const providerType = providerDetail.closest('.provider-modal').getAttribute('data-provider-type');
     
     const configInputs = providerDetail.querySelectorAll('input[data-config-key]');
+    const configTextareas = providerDetail.querySelectorAll('textarea[data-config-key]');
     const configSelects = providerDetail.querySelectorAll('select[data-config-key]');
     const providerConfig = {};
     
     configInputs.forEach(input => {
         const key = input.dataset.configKey;
         const value = input.value;
+        providerConfig[key] = value;
+    });
+    
+    configTextareas.forEach(textarea => {
+        const key = textarea.dataset.configKey;
+        const value = textarea.value;
         providerConfig[key] = value;
     });
     
