@@ -459,46 +459,75 @@
                 <section id="config" class="section" aria-labelledby="config-title">
                     <h2 id="config-title">全局设置</h2>
                     <div class="config-panel">
+                        <!-- Tab导航 -->
+                        <div class="config-tabs">
+                            <button class="config-tab active" data-tab="platform">
+                                <i class="fas fa-server"></i> 平台设置
+                            </button>
+                            <button class="config-tab" data-tab="provider">
+                                <i class="fas fa-plug"></i> 缺省供应商设置
+                            </button>
+                            <button class="config-tab" data-tab="advanced">
+                                <i class="fas fa-cogs"></i> 高级设置
+                            </button>
+                        </div>
+                        
                         <div class="config-form">
-                            <div class="form-group password-input-group">
-                                <label for="apiKey">API密钥</label>
-                                <div class="password-input-wrapper">
-                                    <input type="password" id="apiKey" class="form-control" placeholder="请输入API密钥" autocomplete="off">
-                                    <button type="button" class="password-toggle" data-target="apiKey" aria-label="显示/隐藏密码">
-                                        <i class="fas fa-eye" aria-hidden="true"></i>
-                                    </button>
+                            <!-- Tab 1: 平台设置 -->
+                            <div class="config-tab-content active" data-tab-content="platform">
+                                <div class="form-group password-input-group">
+                                    <label for="apiKey">API密钥</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" id="apiKey" class="form-control" placeholder="请输入API密钥" autocomplete="off">
+                                        <button type="button" class="password-toggle" data-target="apiKey" aria-label="显示/隐藏密码">
+                                            <i class="fas fa-eye" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="host">监听地址</label>
-                                    <input type="text" id="host" class="form-control" value="127.0.0.1">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="host">监听地址</label>
+                                        <input type="text" id="host" class="form-control" value="127.0.0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="port">端口</label>
+                                        <input type="number" id="port" class="form-control" value="3000">
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label for="port">端口</label>
-                                    <input type="number" id="port" class="form-control" value="3000">
+                                <div class="form-group pool-section">
+                                    <label for="adminPassword">后台登录密码</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" id="adminPassword" class="form-control" placeholder="设置后台登录密码（留空则不修改）" autocomplete="new-password">
+                                        <button type="button" class="password-toggle" data-target="adminPassword" aria-label="显示/隐藏密码">
+                                            <i class="fas fa-eye" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <small class="form-text">用于保护管理控制台的访问，修改后需要重新登录</small>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label for="modelProvider">
-                                    降级缺省提供商
-                                    <span class="tooltip-icon" title="配置了提供商池后，默认使用提供商池的配置，提供商池配置失效降级到默认配置">
-                                        <i class="fas fa-question-circle"></i>
-                                    </span>
-                                </label>
-                                <select id="modelProvider" class="form-control">
-                                    <option value="gemini-cli-oauth">Gemini CLI OAuth</option>
-                                    <option value="gemini-antigravity">Gemini Antigravity</option>
-                                    <option value="openai-custom">OpenAI Custom</option>
-                                    <option value="claude-custom">Claude Custom</option>
-                                    <option value="claude-kiro-oauth">Claude Kiro OAuth</option>
-                                    <option value="openai-qwen-oauth">Qwen OAuth</option>
-                                    <option value="openaiResponses-custom">OpenAI Responses</option>
-                                </select>
                             </div>
                             
-                            <!-- Gemini CLI OAuth 配置 -->
-                            <div class="provider-config" data-provider="gemini-cli-oauth">
+                            <!-- Tab 2: 缺省供应商设置 -->
+                            <div class="config-tab-content" data-tab-content="provider">
+                                <div class="form-group">
+                                    <label for="modelProvider">
+                                        降级缺省提供商
+                                        <span class="tooltip-icon" title="配置了提供商池后，会优先使用提供商池的配置，提供商池配置失效则降级到缺省供应商配置">
+                                            <i class="fas fa-question-circle"></i>
+                                        </span>
+                                    </label>
+                                    <select id="modelProvider" class="form-control">
+                                        <option value="gemini-cli-oauth">Gemini CLI OAuth</option>
+                                        <option value="gemini-antigravity">Gemini Antigravity</option>
+                                        <option value="openai-custom">OpenAI Custom</option>
+                                        <option value="claude-custom">Claude Custom</option>
+                                        <option value="claude-kiro-oauth">Claude Kiro OAuth</option>
+                                        <option value="openai-qwen-oauth">Qwen OAuth</option>
+                                        <option value="openaiResponses-custom">OpenAI Responses</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- Gemini CLI OAuth 配置 -->
+                                <div class="provider-config" data-provider="gemini-cli-oauth">
                                 <div class="form-group">
                                     <label for="geminiBaseUrl">Gemini Base URL <span class="optional-tag">(选填)</span></label>
                                     <input type="text" id="geminiBaseUrl" class="form-control" placeholder="https://cloudcode-pa.googleapis.com">
@@ -705,11 +734,10 @@
                                     <input type="text" id="openaiResponsesBaseUrl" class="form-control" value="https://api.openai.com/v1" placeholder="例如: https://api.openai.com/v1">
                                 </div>
                             </div>
+                            </div>
                             
-                            <!-- 高级配置区域 -->
-                            <div class="advanced-config-section">
-                                <h3><i class="fas fa-cogs"></i> 高级配置</h3>
-                                
+                            <!-- Tab 3: 高级设置 -->
+                            <div class="config-tab-content" data-tab-content="advanced">
                                 <div class="config-row">
                                     <div class="form-group">
                                         <label for="systemPromptFilePath">系统提示文件路径</label>
@@ -722,6 +750,11 @@
                                             <option value="overwrite">覆盖 (overwrite)</option>
                                         </select>
                                     </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="systemPrompt">系统提示</label>
+                                    <textarea id="systemPrompt" class="form-control" rows="4" placeholder="输入系统提示..."></textarea>
                                 </div>
                                 
                                 <div class="config-row">
@@ -756,7 +789,7 @@
                                         <input type="number" id="cronNearMinutes" class="form-control" min="1" max="60" value="1">
                                     </div>
                                     <div class="form-group">
-                                        <label for="cronNearMinutes">启用OAuth令牌自动刷新(需重启服务)</label>
+                                        <label>启用OAuth令牌自动刷新(需重启服务)</label>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="cronRefreshToken">
                                             <span class="toggle-slider"></span>
@@ -764,33 +797,15 @@
                                     </div>
                                 </div>
                                 
-                                <div class="form-group pool-section">
+                                <div class="form-group">
                                     <label for="providerPoolsFilePath">提供商池配置文件路径(不能为空)</label>
                                     <input type="text" id="providerPoolsFilePath" class="form-control" value="" placeholder="默认: provider_pools.json">
                                 </div>
                                 
-                                <div class="form-group pool-section">
+                                <div class="form-group">
                                     <label for="maxErrorCount">提供商最大错误次数</label>
                                     <input type="number" id="maxErrorCount" class="form-control" value="3" min="1" max="10" placeholder="默认: 3">
                                     <small class="form-text">提供商连续错误达到此次数后将被标记为不健康，默认为 3 次</small>
-                                </div>
-                                
-                                <!-- 系统提示配置移到最下面 -->
-                                <div class="form-group system-prompt-section">
-                                    <label for="systemPrompt">系统提示</label>
-                                    <textarea id="systemPrompt" class="form-control" rows="4" placeholder="输入系统提示..."></textarea>
-                                </div>
-                                
-                                <!-- 后台登录密码配置 -->
-                                <div class="form-group pool-section">
-                                    <label for="adminPassword">后台登录密码</label>
-                                    <div class="password-input-wrapper">
-                                        <input type="password" id="adminPassword" class="form-control" placeholder="设置后台登录密码（留空则不修改）" autocomplete="new-password">
-                                        <button type="button" class="password-toggle" data-target="adminPassword" aria-label="显示/隐藏密码">
-                                            <i class="fas fa-eye" aria-hidden="true"></i>
-                                        </button>
-                                    </div>
-                                    <small class="form-text">用于保护管理控制台的访问，修改后需要重新登录</small>
                                 </div>
                             </div>
                             

@@ -47,6 +47,9 @@ function initEventListeners() {
         elements.resetConfigBtn.addEventListener('click', loadInitialData);
     }
 
+    // 全局设置Tab切换
+    initConfigTabs();
+
     // 模型提供商切换
     if (elements.modelProvider) {
         elements.modelProvider.addEventListener('change', handleProviderChange);
@@ -95,6 +98,31 @@ function initEventListeners() {
             }
         });
     }
+}
+
+/**
+ * 初始化全局设置Tab切换
+ */
+function initConfigTabs() {
+    const configTabs = document.querySelectorAll('.config-tab');
+    const configTabContents = document.querySelectorAll('.config-tab-content');
+    
+    configTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.getAttribute('data-tab');
+            
+            // 移除所有active状态
+            configTabs.forEach(t => t.classList.remove('active'));
+            configTabContents.forEach(c => c.classList.remove('active'));
+            
+            // 添加当前active状态
+            tab.classList.add('active');
+            const targetContent = document.querySelector(`[data-tab-content="${targetTab}"]`);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+        });
+    });
 }
 
 /**
@@ -330,6 +358,7 @@ export function setReloadConfig(configReloader) {
 
 export {
     initEventListeners,
+    initConfigTabs,
     handleProviderChange,
     handleGeminiCredsTypeChange,
     handleKiroCredsTypeChange,
