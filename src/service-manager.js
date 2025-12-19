@@ -191,8 +191,8 @@ export async function initApiService(config) {
             console.warn(`[Initialization Warning] Skipping unknown model provider '${provider}' during adapter initialization.`);
             continue;
         }
-        if (config.providerPools && config.providerPools[provider] && config.providerPools[provider].length > 0) {
-            // 由号池管理器负责按需初始化
+        if (config.providerPools && provider in config.providerPools) {
+            // 提供商在池配置中存在（即使为空数组），由号池管理器负责按需初始化
             continue;
         }
         try {

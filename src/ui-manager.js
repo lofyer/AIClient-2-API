@@ -1551,6 +1551,19 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
             
             await fs.unlink(fullPath);
             
+            // 删除文件后，检查父目录是否为空，如果为空则删除父目录
+            const parentDir = path.dirname(fullPath);
+            try {
+                const files = await fs.readdir(parentDir);
+                if (files.length === 0) {
+                    await fs.rmdir(parentDir);
+                    console.log(`[UI API] Removed empty directory: ${parentDir}`);
+                }
+            } catch (dirError) {
+                // 忽略目录删除错误，不影响主流程
+                console.warn(`[UI API] Failed to check/remove parent directory: ${dirError.message}`);
+            }
+            
             // 广播更新事件
             broadcastEvent('config_update', {
                 action: 'delete',
