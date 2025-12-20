@@ -28,10 +28,14 @@ export function createProxyAgent(globalConfig, useProxy = false) {
 
     try {
         if (type === 'socks5' || type === 'socks4') {
-            return new SocksProxyAgent(proxyUrl);
+            return new SocksProxyAgent(proxyUrl, {
+                rejectUnauthorized: false
+            });
         } else {
             // http 或 https
-            return new HttpsProxyAgent(proxyUrl);
+            return new HttpsProxyAgent(proxyUrl, {
+                rejectUnauthorized: false
+            });
         }
     } catch (error) {
         console.error('[Proxy] Failed to create proxy agent:', error.message);

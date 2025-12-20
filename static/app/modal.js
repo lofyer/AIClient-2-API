@@ -58,6 +58,9 @@ function showProviderManagerModal(data) {
                         <span class="value">${healthyCount}</span>
                     </div>
                     <div class="provider-summary-actions">
+                        <button class="btn ${providers.filter(p => p.useProxy).length > providers.length / 2 ? 'btn-primary' : 'btn-outline'}" id="toggleAllProxyBtn" onclick="window.toggleAllProvidersProxy('${providerType}')" title="统一切换所有节点的代理状态">
+                            <i class="fas fa-globe"></i> ${providers.filter(p => p.useProxy).length > providers.length / 2 ? '禁用代理' : '启用代理'}
+                        </button>
                         <button class="btn btn-success" onclick="window.showAddProviderForm('${providerType}')">
                             <i class="fas fa-plus"></i> 添加新提供商
                         </button>
@@ -1036,6 +1039,15 @@ async function refreshProviderConfig(providerType) {
                 healthyCountElement.textContent = data.healthyCount;
             }
             
+            // 更新代理开关按钮状态
+            const toggleAllProxyBtn = modal.querySelector('#toggleAllProxyBtn');
+            if (toggleAllProxyBtn) {
+                const enabledCount = data.providers.filter(p => p.useProxy).length;
+                const shouldShowClose = enabledCount > data.providers.length / 2;
+                toggleAllProxyBtn.className = `btn ${shouldShowClose ? 'btn-primary' : 'btn-outline'}`;
+                toggleAllProxyBtn.innerHTML = `<i class="fas fa-globe"></i> ${shouldShowClose ? '禁用代理' : '启用代理'}`;
+            }
+            
             const totalPages = Math.ceil(data.providers.length / PROVIDERS_PER_PAGE);
             
             // 确保当前页不超过总页数
@@ -1649,6 +1661,45 @@ async function toggleProviderProxy(uuid, event) {
     }
 }
 
+/**
+ * 统一切换所有提供商的代理状态
+ * @param {string} providerType - 提供商类型
+ */
+async function toggleAllProvidersProxy(providerType) {
+    // 检查当前所有提供商的代理状态，决定是全部开启还是全部关闭
+    const enabledCount = currentProviders.filter(p => p.useProxy).length;
+    const totalCount = currentProviders.length;
+    
+    // 如果超过一半已启用，则全部关闭；否则全部开启
+    const newProxyState = enabledCount <= totalCount / 2;
+    const actionText = newProxyState ? '启用' : '禁用';
+    
+    if (!confirm(`确定要为所有 ${totalCount} 个提供商${actionText}代理吗？`)) {
+        return;
+    }
+    
+    try {
+        showToast(`正在${actionText}所有代理...`, 'info');
+        
+        // 批量更新所有提供商的代理状态
+        const updatePromises = currentProviders.map(provider => 
+            window.apiClient.put(`/providers/${encodeURIComponent(providerType)}/${provider.uuid}`, {
+                providerConfig: { useProxy: newProxyState }
+            })
+        );
+        
+        await Promise.all(updatePromises);
+        await window.apiClient.post('/reload-config');
+        
+        showToast(`已为所有提供商${actionText}代理`, 'success');
+        // 重新获取该提供商类型的最新配置
+        await refreshProviderConfig(providerType);
+    } catch (error) {
+        console.error('Failed to toggle all providers proxy:', error);
+        showToast(`操作失败: ${error.message}`, 'error');
+    }
+}
+
 // 导出所有函数，并挂载到window对象供HTML调用
 export {
     showProviderManagerModal,
@@ -1663,6 +1714,7 @@ export {
     addProvider,
     toggleProviderStatus,
     toggleProviderProxy,
+    toggleAllProvidersProxy,
     resetAllProvidersHealth,
     performHealthCheck,
     loadModelsForProviderType,
@@ -1681,6 +1733,7 @@ window.showAddProviderForm = showAddProviderForm;
 window.addProvider = addProvider;
 window.toggleProviderStatus = toggleProviderStatus;
 window.toggleProviderProxy = toggleProviderProxy;
+window.toggleAllProvidersProxy = toggleAllProvidersProxy;
 window.resetAllProvidersHealth = resetAllProvidersHealth;
 window.performHealthCheck = performHealthCheck;
 window.goToProviderPage = goToProviderPage;
