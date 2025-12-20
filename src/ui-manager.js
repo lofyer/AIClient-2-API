@@ -2510,8 +2510,7 @@ function getProviderAuthProvider(provider, providerType) {
 
     if (fileKey && provider[fileKey]) {
         try {
-            const fs = require('fs');
-            const content = fs.readFileSync(provider[fileKey], 'utf8');
+            const content = readFileSync(provider[fileKey], 'utf8');
             const creds = JSON.parse(content);
             return creds.provider || null;
         } catch (e) {
