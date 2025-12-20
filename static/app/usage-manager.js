@@ -284,12 +284,12 @@ function createInstanceUsageCard(instance, providerType) {
     const subscriptionTitle = instance.usage?.subscription?.title || '';
     const authProvider = instance.authProvider || '';
     
-    // 用户信息行
-    const userInfoHTML = (userEmail || authProvider) ? `
+    // 用户信息行 - 每项单独一行
+    const userInfoHTML = (userEmail || authProvider || subscriptionTitle) ? `
         <div class="instance-user-info">
-            ${userEmail ? `<span class="user-email" title="${userEmail}"><i class="fas fa-envelope"></i> ${userEmail}</span>` : ''}
-            ${authProvider ? `<span class="auth-provider" title="认证提供者: ${authProvider}"><i class="fas fa-key"></i> ${authProvider}</span>` : ''}
-            ${subscriptionTitle ? `<span class="user-subscription">${subscriptionTitle}</span>` : ''}
+            ${userEmail ? `<div class="user-info-row"><span class="user-email" title="${userEmail}"><i class="fas fa-envelope"></i> ${userEmail}</span></div>` : ''}
+            ${authProvider ? `<div class="user-info-row"><span class="auth-provider" title="认证提供者: ${authProvider}"><i class="fas fa-key"></i> ${authProvider}</span></div>` : ''}
+            ${subscriptionTitle ? `<div class="user-info-row"><span class="user-subscription">${subscriptionTitle}</span></div>` : ''}
         </div>
     ` : '';
 

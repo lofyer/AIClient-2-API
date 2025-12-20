@@ -3973,12 +3973,16 @@ input:checked + .toggle-slider:before {
 /* 用户信息整合到卡片头部 */
 .instance-user-info {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 0.25rem;
     padding-top: 0.375rem;
     border-top: 1px dashed var(--border-color);
     margin-top: 0.375rem;
+}
+
+.user-info-row {
+    display: flex;
+    align-items: center;
 }
 
 .user-email {
