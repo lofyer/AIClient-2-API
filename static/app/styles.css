@@ -3998,6 +3998,19 @@ input:checked + .toggle-slider:before {
     color: var(--primary-color);
 }
 
+.auth-provider {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.auth-provider i {
+    font-size: 0.65rem;
+    color: var(--warning-color);
+}
+
 .user-subscription {
     font-size: 0.65rem;
     padding: 0.125rem 0.375rem;

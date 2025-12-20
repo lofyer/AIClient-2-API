@@ -279,14 +279,16 @@ function createInstanceUsageCard(instance, providerType) {
             ? '<span class="badge badge-healthy">健康</span>'
             : '<span class="badge badge-unhealthy">异常</span>');
 
-    // 获取用户邮箱和订阅信息
+    // 获取用户邮箱、订阅信息和认证提供者
     const userEmail = instance.usage?.user?.email || '';
     const subscriptionTitle = instance.usage?.subscription?.title || '';
+    const authProvider = instance.authProvider || '';
     
     // 用户信息行
-    const userInfoHTML = userEmail ? `
+    const userInfoHTML = (userEmail || authProvider) ? `
         <div class="instance-user-info">
-            <span class="user-email" title="${userEmail}"><i class="fas fa-envelope"></i> ${userEmail}</span>
+            ${userEmail ? `<span class="user-email" title="${userEmail}"><i class="fas fa-envelope"></i> ${userEmail}</span>` : ''}
+            ${authProvider ? `<span class="auth-provider" title="认证提供者: ${authProvider}"><i class="fas fa-key"></i> ${authProvider}</span>` : ''}
             ${subscriptionTitle ? `<span class="user-subscription">${subscriptionTitle}</span>` : ''}
         </div>
     ` : '';

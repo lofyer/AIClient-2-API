@@ -1173,8 +1173,8 @@ function addDynamicConfigFields(form, providerType) {
             const field1 = filteredFields[i];
             // 检查是否为密码类型字段
             const isPassword1 = field1.type === 'password';
-            // 检查是否为OAuth凭据文件路径字段
-            const isOAuthFilePath1 = field1.id.includes('OauthCredsFilePath');
+            // 检查是否为OAuth凭据文件路径字段（支持大写下划线和驼峰两种格式）
+            const isOAuthFilePath1 = field1.id.includes('OauthCredsFilePath') || field1.id.includes('OAUTH_CREDS_FILE_PATH');
             // 检查是否支持多种上传方式
             const isMultiUpload1 = isOAuthFilePath1 && multiUploadProviders.includes(providerType);
             
@@ -1259,8 +1259,8 @@ function addDynamicConfigFields(form, providerType) {
             if (field2) {
                 // 检查是否为密码类型字段
                 const isPassword2 = field2.type === 'password';
-                // 检查是否为OAuth凭据文件路径字段
-                const isOAuthFilePath2 = field2.id.includes('OauthCredsFilePath');
+                // 检查是否为OAuth凭据文件路径字段（支持大写下划线和驼峰两种格式）
+                const isOAuthFilePath2 = field2.id.includes('OauthCredsFilePath') || field2.id.includes('OAUTH_CREDS_FILE_PATH');
                 // 检查是否支持多种上传方式
                 const isMultiUpload2 = isOAuthFilePath2 && multiUploadProviders.includes(providerType);
                 
@@ -1426,8 +1426,8 @@ async function addProvider(providerType) {
     // 根据提供商类型动态收集配置字段（自动匹配 utils.js 中的定义）
     const allFields = getProviderTypeFields(providerType);
     allFields.forEach(field => {
-        // 检查是否为支持多种上传方式的OAuth凭据字段
-        const isOAuthFilePath = field.id.includes('OauthCredsFilePath');
+        // 检查是否为支持多种上传方式的OAuth凭据字段（支持大写下划线和驼峰两种格式）
+        const isOAuthFilePath = field.id.includes('OauthCredsFilePath') || field.id.includes('OAUTH_CREDS_FILE_PATH');
         const isMultiUpload = isOAuthFilePath && multiUploadProviders.includes(providerType);
         
         if (isMultiUpload) {

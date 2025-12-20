@@ -2312,6 +2312,7 @@ async function getProviderTypeUsage(providerType, currentConfig, providerPoolMan
             name: getProviderDisplayName(provider, providerType),
             customName: provider.customName || null,
             credFilePath: getProviderCredFilePath(provider, providerType),
+            authProvider: getProviderAuthProvider(provider, providerType),
             isHealthy: provider.isHealthy !== false,
             isDisabled: provider.isDisabled === true,
             success: false,
@@ -2452,6 +2453,70 @@ function getProviderCredFilePath(provider, providerType) {
         const fileName = path.basename(filePath);
         const dirName = path.basename(path.dirname(filePath));
         return `${dirName}/${fileName}`;
+    }
+
+    return null;
+}
+
+/**
+ * 获取提供商的认证提供者（如 Google, GitHub 等）
+ * @param {Object} provider - 提供商配置
+ * @param {string} providerType - 提供商类型
+ * @returns {string|null} 认证提供者名称
+ */
+function getProviderAuthProvider(provider, providerType) {
+    // 从 Base64 凭证中读取
+    const base64Key = {
+        'claude-kiro-oauth': 'KIRO_OAUTH_CREDS_BASE64',
+        'gemini-cli-oauth': 'GEMINI_OAUTH_CREDS_BASE64',
+        'gemini-antigravity': 'ANTIGRAVITY_OAUTH_CREDS_BASE64',
+        'openai-qwen-oauth': 'QWEN_OAUTH_CREDS_BASE64'
+    }[providerType];
+
+    if (base64Key && provider[base64Key]) {
+        try {
+            const decoded = Buffer.from(provider[base64Key], 'base64').toString('utf8');
+            const creds = JSON.parse(decoded);
+            return creds.provider || null;
+        } catch (e) {
+            // 解析失败，继续尝试其他方式
+        }
+    }
+
+    // 从文本凭证中读取
+    const textKey = {
+        'claude-kiro-oauth': 'KIRO_OAUTH_CREDS_TEXT',
+        'gemini-cli-oauth': 'GEMINI_OAUTH_CREDS_TEXT',
+        'gemini-antigravity': 'ANTIGRAVITY_OAUTH_CREDS_TEXT',
+        'openai-qwen-oauth': 'QWEN_OAUTH_CREDS_TEXT'
+    }[providerType];
+
+    if (textKey && provider[textKey]) {
+        try {
+            const creds = JSON.parse(provider[textKey]);
+            return creds.provider || null;
+        } catch (e) {
+            // 解析失败
+        }
+    }
+
+    // 从文件中读取（同步方式，因为这是在构建结果时调用）
+    const fileKey = {
+        'claude-kiro-oauth': 'KIRO_OAUTH_CREDS_FILE_PATH',
+        'gemini-cli-oauth': 'GEMINI_OAUTH_CREDS_FILE_PATH',
+        'gemini-antigravity': 'ANTIGRAVITY_OAUTH_CREDS_FILE_PATH',
+        'openai-qwen-oauth': 'QWEN_OAUTH_CREDS_FILE_PATH'
+    }[providerType];
+
+    if (fileKey && provider[fileKey]) {
+        try {
+            const fs = require('fs');
+            const content = fs.readFileSync(provider[fileKey], 'utf8');
+            const creds = JSON.parse(content);
+            return creds.provider || null;
+        } catch (e) {
+            // 文件读取或解析失败
+        }
     }
 
     return null;
