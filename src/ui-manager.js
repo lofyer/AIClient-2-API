@@ -2300,7 +2300,11 @@ async function getProviderTypeUsage(providerType, currentConfig, providerPoolMan
 
     // 遍历所有提供商实例获取用量
     for (const provider of providers) {
-        const providerKey = providerType + (provider.uuid || '');
+        // 构建与 adapter.js 中 getServiceAdapter 一致的 providerKey 格式
+        const useProxy = provider.useProxy ?? false;
+        const providerKey = provider.uuid 
+            ? `${providerType}_${provider.uuid}_proxy${useProxy}` 
+            : `${providerType}_proxy${useProxy}`;
         let adapter = serviceInstances[providerKey];
         
         const instanceResult = {

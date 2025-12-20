@@ -412,47 +412,51 @@ async initializeAuth(forceRefresh = false) {
 
     try {
         let mergedCredentials = {};
+        let useBase64OrTextCreds = false;
 
-        // Priority 1: Load from Base64 credentials if available
+        // Priority 1: Load from Base64/Text credentials if available
         if (this.base64Creds) {
             Object.assign(mergedCredentials, this.base64Creds);
-            console.info('[Kiro Auth] Successfully loaded credentials from Base64 (constructor).');
+            console.info('[Kiro Auth] Successfully loaded credentials from Base64/Text (constructor).');
             // Clear base64Creds after use to prevent re-processing
             this.base64Creds = null;
+            useBase64OrTextCreds = true;
         }
 
-        // Priority 2 & 3 合并: 从指定文件路径或目录加载凭证
-        // 读取指定的 credPath 文件以及目录下的其他 JSON 文件(排除当前文件)
-        const targetFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
-        const dirPath = path.dirname(targetFilePath);
-        const targetFileName = path.basename(targetFilePath);
-        
-        console.debug(`[Kiro Auth] Attempting to load credentials from directory: ${dirPath}`);
-        
-        try {
-            // 首先尝试读取目标文件
-            const targetCredentials = await loadCredentialsFromFile(targetFilePath);
-            if (targetCredentials) {
-                Object.assign(mergedCredentials, targetCredentials);
-                console.info(`[Kiro Auth] Successfully loaded OAuth credentials from ${targetFilePath}`);
-            }
+        // Priority 2 & 3: 只有在没有使用 Base64/Text 凭证时，才从文件路径或目录加载凭证
+        // 这样可以避免 Base64/Text 凭证被文件凭证覆盖
+        if (!useBase64OrTextCreds) {
+            const targetFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
+            const dirPath = path.dirname(targetFilePath);
+            const targetFileName = path.basename(targetFilePath);
             
-            // 然后读取目录下的其他 JSON 文件(排除目标文件本身)
-            const files = await fs.readdir(dirPath);
-            for (const file of files) {
-                if (file.endsWith('.json') && file !== targetFileName) {
-                    const filePath = path.join(dirPath, file);
-                    const credentials = await loadCredentialsFromFile(filePath);
-                    if (credentials) {
-                        // 保留已有的 expiresAt,避免被覆盖
-                        credentials.expiresAt = mergedCredentials.expiresAt;
-                        Object.assign(mergedCredentials, credentials);
-                        console.debug(`[Kiro Auth] Loaded Client credentials from ${file}`);
+            console.debug(`[Kiro Auth] Attempting to load credentials from directory: ${dirPath}`);
+            
+            try {
+                // 首先尝试读取目标文件
+                const targetCredentials = await loadCredentialsFromFile(targetFilePath);
+                if (targetCredentials) {
+                    Object.assign(mergedCredentials, targetCredentials);
+                    console.info(`[Kiro Auth] Successfully loaded OAuth credentials from ${targetFilePath}`);
+                }
+                
+                // 然后读取目录下的其他 JSON 文件(排除目标文件本身)
+                const files = await fs.readdir(dirPath);
+                for (const file of files) {
+                    if (file.endsWith('.json') && file !== targetFileName) {
+                        const filePath = path.join(dirPath, file);
+                        const credentials = await loadCredentialsFromFile(filePath);
+                        if (credentials) {
+                            // 保留已有的 expiresAt,避免被覆盖
+                            credentials.expiresAt = mergedCredentials.expiresAt;
+                            Object.assign(mergedCredentials, credentials);
+                            console.debug(`[Kiro Auth] Loaded Client credentials from ${file}`);
+                        }
                     }
                 }
+            } catch (error) {
+                console.warn(`[Kiro Auth] Error loading credentials from directory ${dirPath}: ${error.message}`);
             }
-        } catch (error) {
-            console.warn(`[Kiro Auth] Error loading credentials from directory ${dirPath}: ${error.message}`);
         }
 
         // console.log('[Kiro Auth] Merged credentials:', mergedCredentials);
