@@ -278,7 +278,7 @@ export class KiroApiService {
         this.isInitialized = false;
         this.config = config;
         this.globalConfig = globalConfig;
-        this.credPath = config.KIRO_OAUTH_CREDS_DIR_PATH || path.join(os.homedir(), ".aws", "sso", "cache");
+        this.credPath = config.KIRO_OAUTH_CREDS_DIR_PATH || null;
         this.credsBase64 = config.KIRO_OAUTH_CREDS_BASE64;
         this.credsText = config.KIRO_OAUTH_CREDS_TEXT;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_KIRO ?? false;
@@ -443,12 +443,25 @@ async initializeAuth(forceRefresh = false) {
 
         // Priority 2 & 3: 只有在没有使用 Base64/Text 凭证时，才从文件路径或目录加载凭证
         // 这样可以避免 Base64/Text 凭证被文件凭证覆盖
-        if (!useBase64OrTextCreds) {
+        // 注意：如果已经有 accessToken（说明之前已从 Base64/Text 加载过），则跳过文件加载
+        if (!useBase64OrTextCreds && !this.accessToken) {
+            // 检查是否配置了凭据路径
+            if (!this.credsFilePath && !this.credPath) {
+                throw new Error('[Kiro] 未配置凭据文件路径，请通过 UI 上传凭据或授权 (KIRO_OAUTH_CREDS_FILE_PATH)');
+            }
+            
             const targetFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
             const dirPath = path.dirname(targetFilePath);
             const targetFileName = path.basename(targetFilePath);
             
-            console.debug(`[Kiro Auth] Attempting to load credentials from directory: ${dirPath}`);
+            // 检查凭据文件是否存在
+            try {
+                await fs.access(targetFilePath);
+            } catch {
+                throw new Error(`[Kiro] 凭据文件不存在: ${targetFilePath}，请检查路径或重新上传凭据`);
+            }
+            
+            console.debug(`[Kiro Auth] Attempting to load credentials from: ${targetFilePath}`);
             
             try {
                 // 首先尝试读取目标文件
@@ -473,6 +486,10 @@ async initializeAuth(forceRefresh = false) {
                     }
                 }
             } catch (error) {
+                // 如果是我们自己抛出的错误，直接重新抛出
+                if (error.message.includes('[Kiro]')) {
+                    throw error;
+                }
                 console.warn(`[Kiro Auth] Error loading credentials from directory ${dirPath}: ${error.message}`);
             }
         }
@@ -531,17 +548,21 @@ async initializeAuth(forceRefresh = false) {
                 this.expiresAt = expiresAt;
                 console.info('[Kiro Auth] Access token refreshed successfully');
 
-                // Update the token file - use specified path if configured, otherwise use default
-                const tokenFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
-                const updatedTokenData = {
-                    accessToken: this.accessToken,
-                    refreshToken: this.refreshToken,
-                    expiresAt: expiresAt,
-                };
-                if(this.profileArn){
-                    updatedTokenData.profileArn = this.profileArn;
+                // Update the token file - use specified path if configured
+                if (!this.credsFilePath) {
+                    console.warn('[Kiro Auth] No credential file path configured, skipping token file update');
+                } else {
+                    const tokenFilePath = this.credsFilePath;
+                    const updatedTokenData = {
+                        accessToken: this.accessToken,
+                        refreshToken: this.refreshToken,
+                        expiresAt: expiresAt,
+                    };
+                    if(this.profileArn){
+                        updatedTokenData.profileArn = this.profileArn;
+                    }
+                    await saveCredentialsToFile(tokenFilePath, updatedTokenData);
                 }
-                await saveCredentialsToFile(tokenFilePath, updatedTokenData);
             } else {
                 throw new Error('Invalid refresh response: Missing accessToken');
             }
@@ -595,7 +616,7 @@ async initializeAuth(forceRefresh = false) {
         // 判断最后一条消息是否为 assistant,如果是则移除
         const lastMessage = processedMessages[processedMessages.length - 1];
         if (processedMessages.length > 0 && lastMessage.role === 'assistant') {
-            if (lastMessage.content[0].type === "text" && lastMessage.content[0].text === "{") {
+            if (Array.isArray(lastMessage.content) && lastMessage.content[0]?.type === "text" && lastMessage.content[0]?.text === "{") {
                 console.log('[Kiro] Removing last assistant with "{" message from processedMessages');
                 processedMessages.pop();
             }

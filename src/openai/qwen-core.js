@@ -374,12 +374,23 @@ export class QwenApiService {
         if (this.config && this.config.QWEN_OAUTH_CREDS_FILE_PATH) {
             return path.resolve(this.config.QWEN_OAUTH_CREDS_FILE_PATH);
         }
-        return path.join(os.homedir(), QWEN_DIR, QWEN_CREDENTIAL_FILENAME);
+        return null; // 不再返回默认路径
     }
 
     async _loadCachedQwenCredentials(client) {
         try {
             const keyFile = this._getQwenCachedCredentialPath();
+            if (!keyFile) {
+                throw new Error('[Qwen] 未配置凭据文件路径，请通过 UI 上传凭据或授权 (QWEN_OAUTH_CREDS_FILE_PATH)');
+            }
+            
+            // 检查文件是否存在
+            try {
+                await fs.access(keyFile);
+            } catch {
+                throw new Error(`[Qwen] 凭据文件不存在: ${keyFile}，请检查路径或重新上传凭据`);
+            }
+            
             const creds = await fs.readFile(keyFile, 'utf-8');
             const credentials = JSON.parse(creds);
             client.setCredentials(credentials);
@@ -387,13 +398,21 @@ export class QwenApiService {
             const hasToken = !!credentials?.access_token;
             const notExpired = !!credentials?.expiry_date && (Date.now() < credentials.expiry_date - TOKEN_REFRESH_BUFFER_MS);
             return hasToken && notExpired;
-        } catch (_) {
+        } catch (error) {
+            // 如果是我们自己抛出的错误，直接重新抛出
+            if (error.message.includes('[Qwen]')) {
+                throw error;
+            }
             return false;
         }
     }
 
     async _cacheQwenCredentials(credentials) {
         const filePath = this._getQwenCachedCredentialPath();
+        if (!filePath) {
+            console.warn('[Qwen] No credential file path configured, skipping credential caching');
+            return;
+        }
         await fs.mkdir(path.dirname(filePath), { recursive: true });
         const credString = JSON.stringify(credentials, null, 2);
         await fs.writeFile(filePath, credString);
@@ -679,7 +698,7 @@ class SharedTokenManager {
         if (customPath) {
             return path.resolve(customPath);
         }
-        return path.join(os.homedir(), QWEN_DIR, QWEN_CREDENTIAL_FILENAME);
+        return null; // 不再返回默认路径
     }
 
     resolveLockFilePath(credentialFilePath, customLockPath) {

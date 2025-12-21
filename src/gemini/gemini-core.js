@@ -261,7 +261,20 @@ export class GeminiApiService {
             }
         }
 
-        const credPath = this.oauthCredsFilePath || path.join(os.homedir(), CREDENTIALS_DIR, CREDENTIALS_FILE);
+        // 检查是否配置了凭据文件路径
+        if (!this.oauthCredsFilePath) {
+            throw new Error('[Gemini] 未配置凭据文件路径，请通过 UI 上传凭据或授权 (GEMINI_OAUTH_CREDS_FILE_PATH)');
+        }
+        
+        const credPath = this.oauthCredsFilePath;
+        
+        // 检查凭据文件是否存在
+        try {
+            await fs.access(credPath);
+        } catch {
+            throw new Error(`[Gemini] 凭据文件不存在: ${credPath}，请检查路径或重新上传凭据`);
+        }
+        
         try {
             const data = await fs.readFile(credPath, "utf8");
             const credentials = JSON.parse(data);
@@ -277,15 +290,16 @@ export class GeminiApiService {
                 console.log('[Gemini Auth] Token refreshed and saved successfully.');
             }
         } catch (error) {
+            // 如果是我们自己抛出的错误，直接重新抛出
+            if (error.message.includes('[Gemini]')) {
+                throw error;
+            }
             console.error('[Gemini Auth] Error initializing authentication:', error.code);
             if (error.code === 'ENOENT' || error.code === 400) {
-                console.log(`[Gemini Auth] Credentials file '${credPath}' not found. Starting new authentication flow...`);
-                const newTokens = await this.getNewToken(credPath);
-                this.authClient.setCredentials(newTokens);
-                console.log('[Gemini Auth] New token obtained and loaded into memory.');
+                throw new Error(`[Gemini] 凭据文件不存在: ${credPath}，请检查路径或重新上传凭据`);
             } else {
                 console.error('[Gemini Auth] Failed to initialize authentication from file:', error);
-                throw new Error(`Failed to load OAuth credentials.`);
+                throw new Error(`Failed to load OAuth credentials: ${error.message}`);
             }
         }
     }
