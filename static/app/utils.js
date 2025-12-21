@@ -242,12 +242,50 @@ function getProviderStats(providerStats) {
     };
 }
 
+/**
+ * 将 base64 或 text 内容转换为 JSON 并上传为文件
+ * @param {string} content - base64 编码或 JSON 文本内容
+ * @param {string} type - 'base64' 或 'text'
+ * @param {string} provider - 提供商类型标识 (如 'gemini', 'kiro')
+ * @returns {Promise<string>} 上传后的文件路径
+ */
+async function uploadCredentialsAsFile(content, type, provider) {
+    let jsonContent;
+    
+    if (type === 'base64') {
+        try {
+            const decoded = atob(content);
+            jsonContent = JSON.parse(decoded);
+        } catch (e) {
+            throw new Error('Base64 解码或 JSON 解析失败，请检查内容格式');
+        }
+    } else {
+        try {
+            jsonContent = JSON.parse(content);
+        } catch (e) {
+            throw new Error('JSON 解析失败，请检查内容格式');
+        }
+    }
+    
+    const jsonString = JSON.stringify(jsonContent, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const timestamp = Date.now();
+    const file = new File([blob], `${timestamp}_oauth_creds.json`, { type: 'application/json' });
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('provider', provider);
+    
+    const result = await window.apiClient.upload('/upload-oauth-credentials', formData);
+    return result.filePath;
+}
+
 // 导出所有工具函数
 export {
-    formatUptime,
-    escapeHtml,
+    formatUptime,  escapeHtml,
     showToast,
     getFieldLabel,
     getProviderTypeFields,
-    getProviderStats
+    getProviderStats,
+    uploadCredentialsAsFile
 };

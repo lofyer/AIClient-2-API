@@ -650,6 +650,7 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
             if (newConfig.CRON_REFRESH_TOKEN !== undefined) currentConfig.CRON_REFRESH_TOKEN = newConfig.CRON_REFRESH_TOKEN;
             if (newConfig.PROVIDER_POOLS_FILE_PATH !== undefined) currentConfig.PROVIDER_POOLS_FILE_PATH = newConfig.PROVIDER_POOLS_FILE_PATH;
             if (newConfig.MAX_ERROR_COUNT !== undefined) currentConfig.MAX_ERROR_COUNT = newConfig.MAX_ERROR_COUNT;
+            if (newConfig.USAGE_REFRESH_INTERVAL !== undefined) currentConfig.USAGE_REFRESH_INTERVAL = newConfig.USAGE_REFRESH_INTERVAL;
             if (newConfig.GLOBAL_PROXY !== undefined) currentConfig.GLOBAL_PROXY = newConfig.GLOBAL_PROXY;
 
             // Handle system prompt update
@@ -716,6 +717,7 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
                     CRON_REFRESH_TOKEN: currentConfig.CRON_REFRESH_TOKEN,
                     PROVIDER_POOLS_FILE_PATH: currentConfig.PROVIDER_POOLS_FILE_PATH,
                     MAX_ERROR_COUNT: currentConfig.MAX_ERROR_COUNT,
+                    USAGE_REFRESH_INTERVAL: currentConfig.USAGE_REFRESH_INTERVAL,
                     GLOBAL_PROXY: currentConfig.GLOBAL_PROXY
                 };
 
@@ -2519,4 +2521,16 @@ function getProviderAuthProvider(provider, providerType) {
     }
 
     return null;
+}
+
+/**
+ * 刷新用量缓存（供后台定时任务调用）
+ * @param {Object} currentConfig - 当前配置
+ * @param {Object} providerPoolManager - 提供商池管理器
+ */
+export async function refreshUsageCache(currentConfig, providerPoolManager) {
+    console.log('[Usage Refresh] Fetching fresh usage data...');
+    const usageResults = await getAllProvidersUsage(currentConfig, providerPoolManager);
+    await writeUsageCache(usageResults);
+    return usageResults;
 }

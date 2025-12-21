@@ -1,6 +1,6 @@
 // 模态框管理模块
 
-import { showToast, getFieldLabel, getProviderTypeFields } from './utils.js';
+import { showToast, getFieldLabel, getProviderTypeFields, uploadCredentialsAsFile } from './utils.js';
 import { handleProviderPasswordToggle } from './event-handlers.js';
 
 // 分页配置
@@ -1427,40 +1427,61 @@ async function addProvider(providerType) {
     const checkHealth = document.getElementById('newCheckHealth')?.value === 'true';
     
     const providerConfig = {
-        customName: customName || '', // 允许为空
-        checkModelName: checkModelName || '', // 允许为空
+        customName: customName || '',
+        checkModelName: checkModelName || '',
         checkHealth
     };
     
     // 支持多种上传方式的提供商
     const multiUploadProviders = ['gemini-cli-oauth', 'claude-kiro-oauth'];
     
-    // 根据提供商类型动态收集配置字段（自动匹配 utils.js 中的定义）
+    // 提供商类型到目录名的映射
+    const providerDirMap = {
+        'gemini-cli-oauth': 'gemini',
+        'claude-kiro-oauth': 'kiro',
+        'gemini-antigravity': 'antigravity',
+        'openai-qwen-oauth': 'qwen'
+    };
+    
+    // 根据提供商类型动态收集配置字段
     const allFields = getProviderTypeFields(providerType);
-    allFields.forEach(field => {
-        // 检查是否为支持多种上传方式的OAuth凭据字段（支持大写下划线和驼峰两种格式）
-        const isOAuthFilePath = field.id.includes('OauthCredsFilePath') || field.id.includes('OAUTH_CREDS_FILE_PATH');
-        const isMultiUpload = isOAuthFilePath && multiUploadProviders.includes(providerType);
-        
-        if (isMultiUpload) {
-            // 获取选中的凭据类型
-            const credsType = document.querySelector(`input[name="new${field.id}Type"]:checked`)?.value || 'file';
-            if (credsType === 'base64') {
-                const base64Key = field.id.replace('FilePath', 'Base64').replace('FILE_PATH', 'BASE64');
-                providerConfig[base64Key] = document.getElementById(`new${field.id}Base64`)?.value || '';
-            } else if (credsType === 'text') {
-                const textKey = field.id.replace('FilePath', 'Text').replace('FILE_PATH', 'TEXT');
-                providerConfig[textKey] = document.getElementById(`new${field.id}Text`)?.value || '';
+    
+    try {
+        for (const field of allFields) {
+            const isOAuthFilePath = field.id.includes('OauthCredsFilePath') || field.id.includes('OAUTH_CREDS_FILE_PATH');
+            const isMultiUpload = isOAuthFilePath && multiUploadProviders.includes(providerType);
+            
+            if (isMultiUpload) {
+                const credsType = document.querySelector(`input[name="new${field.id}Type"]:checked`)?.value || 'file';
+                
+                if (credsType === 'base64') {
+                    const base64Content = document.getElementById(`new${field.id}Base64`)?.value || '';
+                    if (base64Content) {
+                        const providerDir = providerDirMap[providerType] || 'common';
+                        const filePath = await uploadCredentialsAsFile(base64Content, 'base64', providerDir);
+                        providerConfig[field.id] = filePath;
+                    }
+                } else if (credsType === 'text') {
+                    const textContent = document.getElementById(`new${field.id}Text`)?.value || '';
+                    if (textContent) {
+                        const providerDir = providerDirMap[providerType] || 'common';
+                        const filePath = await uploadCredentialsAsFile(textContent, 'text', providerDir);
+                        providerConfig[field.id] = filePath;
+                    }
+                } else {
+                    providerConfig[field.id] = document.getElementById(`new${field.id}`)?.value || '';
+                }
             } else {
-                providerConfig[field.id] = document.getElementById(`new${field.id}`)?.value || '';
-            }
-        } else {
-            const element = document.getElementById(`new${field.id}`);
-            if (element) {
-                providerConfig[field.id] = element.value || '';
+                const element = document.getElementById(`new${field.id}`);
+                if (element) {
+                    providerConfig[field.id] = element.value || '';
+                }
             }
         }
-    });
+    } catch (error) {
+        showToast(error.message, 'error');
+        return;
+    }
     
     try {
         await window.apiClient.post('/providers', {
@@ -1469,12 +1490,10 @@ async function addProvider(providerType) {
         });
         await window.apiClient.post('/reload-config');
         showToast('提供商配置添加成功', 'success');
-        // 移除添加表单
         const form = document.querySelector('.add-provider-form');
         if (form) {
             form.remove();
         }
-        // 重新获取最新配置数据
         await refreshProviderConfig(providerType);
     } catch (error) {
         console.error('Failed to add provider:', error);

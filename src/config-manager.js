@@ -97,7 +97,8 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
             CRON_NEAR_MINUTES: 15,
             CRON_REFRESH_TOKEN: false,
             PROVIDER_POOLS_FILE_PATH: null, // 新增号池配置文件路径
-            MAX_ERROR_COUNT: 3 // 提供商最大错误次数
+            MAX_ERROR_COUNT: 3, // 提供商最大错误次数
+            USAGE_REFRESH_INTERVAL: 60 // 定期刷新用量间隔（分钟）
         };
         console.log('[Config] Using default configuration.');
     }

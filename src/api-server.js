@@ -186,11 +186,22 @@ async function startServer() {
             // 每 CRON_NEAR_MINUTES 分钟执行一次心跳日志和令牌刷新
             setInterval(heartbeatAndRefreshToken, CONFIG.CRON_NEAR_MINUTES * 60 * 1000);
         }
+        
         // 服务器完全启动后,执行初始健康检查
         const poolManager = getProviderPoolManager();
         if (poolManager) {
             console.log('[Initialization] Performing initial health checks for provider pools...');
             poolManager.performHealthChecks(true);
+        }
+        
+        // 定期刷新用量数据
+        const usageRefreshInterval = CONFIG.USAGE_REFRESH_INTERVAL || 60;
+        if (usageRefreshInterval > 0 && poolManager) {
+            console.log(`  • Usage Refresh Interval: ${usageRefreshInterval} minutes`);
+            const { refreshUsageCache } = await import('./ui-manager.js');
+            setInterval(() => refreshUsageCache(CONFIG, poolManager).catch(e => 
+                console.error('[Usage Refresh] Failed:', e.message)
+            ), usageRefreshInterval * 60 * 1000);
         }
     });
     return server; // Return the server instance for testing purposes
