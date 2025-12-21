@@ -457,7 +457,14 @@ export class ProviderPoolManager {
         const serviceAdapter = getServiceAdapter(tempConfig, this.globalConfig);
         
         // 获取所有可能的请求格式
+        this._log('debug', `[HealthCheck] Building requests for providerType=${providerType}, modelName=${modelName}`);
         const healthCheckRequests = this._buildHealthCheckRequests(providerType, modelName);
+        
+        // 检查返回值是否有效
+        if (!healthCheckRequests || !Array.isArray(healthCheckRequests) || healthCheckRequests.length === 0) {
+            this._log('error', `[HealthCheck] _buildHealthCheckRequests returned invalid result for providerType=${providerType}: ${JSON.stringify(healthCheckRequests)}`);
+            return { success: false, modelName, errorMessage: `No health check request format available for provider type: ${providerType}` };
+        }
         
         // 重试机制：尝试不同的请求格式
         const maxRetries = healthCheckRequests.length;

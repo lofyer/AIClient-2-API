@@ -6,6 +6,8 @@ import os from 'os';
 import crypto from 'crypto';
 import open from 'open';
 import { broadcastEvent } from './ui-manager.js';
+import { autoLinkProviderConfigs } from './service-manager.js';
+import { CONFIG } from './config-manager.js';
 
 /**
  * OAuth 提供商配置
@@ -196,6 +198,9 @@ async function createOAuthCallbackServer(config, redirectUri, authClient, credPa
                             relativePath: relativePath,
                             timestamp: new Date().toISOString()
                         });
+                        
+                        // 自动关联新生成的凭据到 Pools
+                        await autoLinkProviderConfigs(CONFIG);
                         
                         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                         res.end(generateResponsePage(true, '您可以关闭此页面'));
@@ -438,6 +443,9 @@ async function pollQwenToken(deviceCode, codeVerifier, interval = 5, expiresIn =
                     relativePath: relativePath,
                     timestamp: new Date().toISOString()
                 });
+                
+                // 自动关联新生成的凭据到 Pools
+                await autoLinkProviderConfigs(CONFIG);
                 
                 return data;
             }
@@ -790,6 +798,9 @@ async function pollKiroBuilderIDToken(clientId, clientSecret, deviceCode, interv
                     timestamp: new Date().toISOString()
                 });
                 
+                // 自动关联新生成的凭据到 Pools
+                await autoLinkProviderConfigs(CONFIG);
+                
                 return tokenData;
             }
             
@@ -952,6 +963,9 @@ function createKiroHttpCallbackServer(port, codeVerifier, expectedState, options
                         relativePath: path.relative(process.cwd(), credPath),
                         timestamp: new Date().toISOString()
                     });
+                    
+                    // 自动关联新生成的凭据到 Pools
+                    await autoLinkProviderConfigs(CONFIG);
                     
                     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                     res.end(generateResponsePage(true, '授权成功！您可以关闭此页面'));

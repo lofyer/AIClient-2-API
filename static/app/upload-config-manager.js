@@ -724,6 +724,12 @@ function initUploadConfigManager() {
         refreshBtn.addEventListener('click', loadConfigList);
     }
 
+    // 下载全部配置按钮
+    const downloadAllBtn = document.getElementById('downloadAllConfigs');
+    if (downloadAllBtn) {
+        downloadAllBtn.addEventListener('click', downloadAllConfigs);
+    }
+
     // 批量关联配置按钮
     const batchLinkBtn = document.getElementById('batchLinkKiroBtn') || document.getElementById('batchLinkProviderBtn');
     if (batchLinkBtn) {
@@ -924,6 +930,51 @@ function debounce(func, wait) {
     };
 }
 
+/**
+ * 打包下载所有配置文件
+ */
+async function downloadAllConfigs() {
+    try {
+        showToast('提示', '正在打包下载...', 'info');
+        
+        const token = localStorage.getItem('authToken');
+        const headers = {
+            'Authorization': token ? `Bearer ${token}` : ''
+        };
+
+        const response = await fetch('/api/upload-configs/download-all', { headers });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error?.message || '下载失败');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // 从 Content-Disposition 中提取文件名，或者使用默认名
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `configs_backup_${new Date().toISOString().slice(0, 10)}.zip`;
+        if (contentDisposition && contentDisposition.indexOf('filename=') !== -1) {
+            const matches = /filename="([^"]+)"/.exec(contentDisposition);
+            if (matches && matches[1]) filename = matches[1];
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showToast('成功', '配置文件已下载', 'success');
+    } catch (error) {
+        console.error('打包下载失败:', error);
+        showToast('错误', '打包下载失败: ' + error.message, 'error');
+    }
+}
+
 // 导出函数
 export {
     initUploadConfigManager,
@@ -933,5 +984,6 @@ export {
     deleteConfig,
     closeConfigModal,
     copyConfigContent,
-    reloadConfig
+    reloadConfig,
+    downloadAllConfigs
 };
