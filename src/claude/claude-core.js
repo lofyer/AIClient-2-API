@@ -22,7 +22,7 @@ export class ClaudeApiService {
         this.apiKey = config.CLAUDE_API_KEY;
         this.baseUrl = config.CLAUDE_BASE_URL;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_CLAUDE ?? false;
-        this.useProxy = config?.useProxy ?? false;
+        this.useProxy = config?.useProxy || false;
         console.log(`[Claude] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}, Custom proxy ${this.useProxy ? 'enabled' : 'disabled'}`);
         this.client = this.createClient();
     }

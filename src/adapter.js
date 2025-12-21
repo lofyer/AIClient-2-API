@@ -355,7 +355,7 @@ export const serviceInstances = {};
 export function getServiceAdapter(config, globalConfig = null) {
     console.log(`[Adapter] getServiceAdapter, provider: ${config.MODEL_PROVIDER}, uuid: ${config.uuid}`);
     const provider = config.MODEL_PROVIDER;
-    const useProxy = config.useProxy ?? false;
+    const useProxy = config.useProxy || false;
     // 将 useProxy 状态加入缓存 key，确保代理配置变化时重新创建实例
     const providerKey = config.uuid ? `${provider}_${config.uuid}_proxy${useProxy}` : `${provider}_proxy${useProxy}`;
     if (!serviceInstances[providerKey]) {

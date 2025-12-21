@@ -282,7 +282,7 @@ export class KiroApiService {
         this.credsBase64 = config.KIRO_OAUTH_CREDS_BASE64;
         this.credsText = config.KIRO_OAUTH_CREDS_TEXT;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_KIRO ?? false;
-        this.useProxy = config?.useProxy ?? false;
+        this.useProxy = config?.useProxy || false;
         this.uuid = config?.uuid; // 获取多节点配置的 uuid
         console.log(`[Kiro] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}, Custom proxy ${this.useProxy ? 'enabled' : 'disabled'}`);
 

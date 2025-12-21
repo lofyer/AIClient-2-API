@@ -179,7 +179,7 @@ export class QwenApiService {
         this.currentAxiosInstance = null;
         this.tokenManagerOptions = { credentialFilePath: this._getQwenCachedCredentialPath() };
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_QWEN ?? false;
-        this.useProxy = config?.useProxy ?? false;
+        this.useProxy = config?.useProxy || false;
         
         // Initialize instance-specific endpoints
         this.baseUrl = config.QWEN_BASE_URL || DEFAULT_QWEN_BASE_URL;

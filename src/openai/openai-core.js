@@ -14,7 +14,7 @@ export class OpenAIApiService {
         this.apiKey = config.OPENAI_API_KEY;
         this.baseUrl = config.OPENAI_BASE_URL;
         this.useSystemProxy = config?.USE_SYSTEM_PROXY_OPENAI ?? false;
-        this.useProxy = config?.useProxy ?? false;
+        this.useProxy = config?.useProxy || false;
         console.log(`[OpenAI] System proxy ${this.useSystemProxy ? 'enabled' : 'disabled'}, Custom proxy ${this.useProxy ? 'enabled' : 'disabled'}`);
 
         // 配置 HTTP/HTTPS agent 限制连接池大小，避免资源泄漏
