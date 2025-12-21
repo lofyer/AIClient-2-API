@@ -366,7 +366,7 @@ const upload = multer({
  * @param {http.ServerResponse} res - The HTTP response object
  */
 export async function serveStaticFiles(pathParam, res) {
-    const filePath = path.join(process.cwd(), 'static', pathParam === '/' || pathParam === '/index.html' ? 'index.html' : pathParam.replace('/static/', ''));
+    const filePath = path.join(process.cwd(), 'static', pathParam === '/' || pathParam === '/index.html' ? 'index-v2.html' : pathParam.replace('/static/', ''));
 
     if (existsSync(filePath)) {
         const ext = path.extname(filePath);
