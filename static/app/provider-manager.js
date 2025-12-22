@@ -3,6 +3,8 @@
 import { providerStats, updateProviderStats } from './constants.js';
 import { showToast, formatUptime } from './utils.js';
 import { fileUploadHandler } from './file-upload.js';
+import { t, getCurrentLanguage } from './i18n.js';
+import { loadConfigList } from './upload-config-manager.js';
 
 // 保存初始服务器时间和运行时间
 let initialServerTime = null;
@@ -610,6 +612,10 @@ function showAuthModal(authUrl, authInfo) {
             }
             modal.remove();
             window.removeEventListener('oauth_success_event', handleOAuthSuccess);
+            
+            // 授权成功后刷新配置和提供商列表
+            loadProviders();
+            loadConfigList();
         };
         window.addEventListener('oauth_success_event', handleOAuthSuccess);
         
