@@ -66,7 +66,9 @@ export function initializeAPIManagement(services) {
     return async function heartbeatAndRefreshToken() {
         console.log(`[Heartbeat] Server is running. Current time: ${new Date().toLocaleString()}`, Object.keys(services));
         
-        // 优先刷新号池中所有提供商的 token（包括不健康的）
+        // 刷新号池中所有提供商的 token（包括不健康的）
+        // 注意：号池管理的 provider 已经在 refreshAllTokens() 中处理，
+        // 不需要再通过 services 循环刷新，避免重复调用
         const poolManager = getProviderPoolManager();
         if (poolManager) {
             try {
@@ -76,14 +78,9 @@ export function initializeAPIManagement(services) {
             }
         }
         
-        // 刷新非号池的单例服务适配器
-        for (const providerKey in services) {
-            const serviceAdapter = services[providerKey];
-            try {
-                await serviceAdapter.refreshToken();
-            } catch (error) {
-                console.error(`[Token Refresh Error] Failed to refresh token for ${providerKey}: ${error.message}`);           }
-        }
+        // 注意：services 中的适配器实例与号池中使用的是同一个单例（通过 serviceInstances 缓存）
+        // 因此不需要再次调用 refreshToken()，否则会导致重复刷新
+        // 如果将来有不在号池中管理的独立服务，可以在这里添加刷新逻辑
     };
 }
 
