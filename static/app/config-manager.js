@@ -104,6 +104,10 @@ async function loadConfiguration() {
         if (providerPoolsFilePathEl) providerPoolsFilePathEl.value = data.PROVIDER_POOLS_FILE_PATH;
         if (maxErrorCountEl) maxErrorCountEl.value = data.MAX_ERROR_COUNT || 3;
 
+        // 定期刷新用量间隔
+        const usageRefreshIntervalEl = document.getElementById('usageRefreshInterval');
+        if (usageRefreshIntervalEl) usageRefreshIntervalEl.value = data.USAGE_REFRESH_INTERVAL ?? 60;
+
         // 代理配置
         const proxyConfig = data.GLOBAL_PROXY || {};
         const proxyEnabledEl = document.getElementById('proxyEnabled');
@@ -285,6 +289,7 @@ async function saveConfiguration() {
     config.CRON_REFRESH_TOKEN = document.getElementById('cronRefreshToken')?.checked || false;
     config.PROVIDER_POOLS_FILE_PATH = document.getElementById('providerPoolsFilePath')?.value || '';
     config.MAX_ERROR_COUNT = parseInt(document.getElementById('maxErrorCount')?.value || 3);
+    config.USAGE_REFRESH_INTERVAL = parseInt(document.getElementById('usageRefreshInterval')?.value ?? 60);
 
     // 代理配置
     const proxyPortValue = document.getElementById('proxyPort')?.value;

@@ -300,6 +300,34 @@ export class ProviderPoolManager {
     }
 
     /**
+     * 刷新所有提供商的 token（包括不健康的）
+     * @returns {Promise<void>}
+     */
+    async refreshAllTokens() {
+        this._log('info', 'Refreshing tokens for all providers...');
+        
+        for (const providerType in this.providerStatus) {
+            for (const providerStatus of this.providerStatus[providerType]) {
+                const providerConfig = providerStatus.config;
+                
+                try {
+                    const tempConfig = {
+                        ...providerConfig,
+                        MODEL_PROVIDER: providerType
+                    };
+                    
+                    const serviceAdapter = getServiceAdapter(tempConfig, this.globalConfig);
+                    await serviceAdapter.refreshToken();
+                    
+                    this._log('debug', `Token refresh completed for ${providerConfig.uuid} (${providerType})`);
+                } catch (error) {
+                    this._log('error', `Token refresh failed for ${providerConfig.uuid} (${providerType}): ${error.message}`);
+                }
+            }
+        }
+    }
+
+    /**
      * Performs health checks on all providers in the pool.
      * This method would typically be called periodically (e.g., via cron job).
      */

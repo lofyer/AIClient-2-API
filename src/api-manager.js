@@ -65,24 +65,24 @@ export async function handleAPIRequests(method, path, req, res, currentConfig, a
 export function initializeAPIManagement(services) {
     return async function heartbeatAndRefreshToken() {
         console.log(`[Heartbeat] Server is running. Current time: ${new Date().toLocaleString()}`, Object.keys(services));
-        // 循环遍历所有已初始化的服务适配器，并尝试刷新令牌
-        // if (getProviderPoolManager()) {
-        //     await getProviderPoolManager().performHealthChecks(); // 定期执行健康检查
-        // }
+        
+        // 优先刷新号池中所有提供商的 token（包括不健康的）
+        const poolManager = getProviderPoolManager();
+        if (poolManager) {
+            try {
+                await poolManager.refreshAllTokens();
+            } catch (error) {
+                console.error(`[Token Refresh Error] Failed to refresh pool tokens: ${error.message}`);
+            }
+        }
+        
+        // 刷新非号池的单例服务适配器
         for (const providerKey in services) {
             const serviceAdapter = services[providerKey];
             try {
-                // For pooled providers, refreshToken should be handled by individual instances
-                // For single instances, this remains relevant
                 await serviceAdapter.refreshToken();
-                // console.log(`[Token Refresh] Refreshed token for ${providerKey}`);
             } catch (error) {
-                console.error(`[Token Refresh Error] Failed to refresh token for ${providerKey}: ${error.message}`);
-                // 如果是号池中的某个实例刷新失败，这里需要捕获并更新其状态
-                // 现有的 serviceInstances 存储的是每个配置对应的单例，而非池中的成员
-                // 这意味着如果一个池成员的 token 刷新失败，需要找到它并更新其在 poolManager 中的状态
-                // 暂时通过捕获错误日志来发现问题，更精细的控制需要在 refreshToken 中抛出更多信息
-            }
+                console.error(`[Token Refresh Error] Failed to refresh token for ${providerKey}: ${error.message}`);           }
         }
     };
 }
