@@ -269,8 +269,16 @@ async function uploadCredentialsAsFile(content, type, provider) {
     
     const jsonString = JSON.stringify(jsonContent, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
-    const timestamp = Date.now();
-    const file = new File([blob], `${timestamp}_oauth_creds.json`, { type: 'application/json' });
+    
+    // 根据 provider 类型生成对应的文件名
+    const fileNameMap = {
+        'kiro': 'kiro-auth-token.json',
+        'gemini': 'oauth_creds.json',
+        'qwen': 'oauth_creds.json',
+        'antigravity': 'oauth_creds.json'
+    };
+    const fileName = fileNameMap[provider] || 'oauth_creds.json';
+    const file = new File([blob], fileName, { type: 'application/json' });
     
     const formData = new FormData();
     formData.append('file', file);
