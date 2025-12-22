@@ -243,11 +243,13 @@ export async function handleStreamRequest(res, service, model, requestBody, from
     }  catch (error) {
         console.error('\n[Server] Error during stream processing:', error.stack);
         if (providerPoolManager && pooluuid) {
-            console.log(`[Provider Pool] Marking ${toProvider} as unhealthy due to stream error`);
+            // 提取错误状态码
+            const errorStatusCode = error.status || error.code || error.response?.status || null;
+            console.log(`[Provider Pool] Marking ${toProvider} as unhealthy due to stream error (status: ${errorStatusCode})`);
             // 如果是号池模式，并且请求处理失败，则标记当前使用的提供者为不健康
             providerPoolManager.markProviderUnhealthy(toProvider, {
                 uuid: pooluuid
-            });
+            }, error.message, errorStatusCode);
         }
 
         // 使用新方法创建符合 fromProvider 格式的流式错误响应
@@ -297,11 +299,13 @@ export async function handleUnaryRequest(res, service, model, requestBody, fromP
     } catch (error) {
         console.error('\n[Server] Error during unary processing:', error.stack);
         if (providerPoolManager && pooluuid) {
-            console.log(`[Provider Pool] Marking ${toProvider} as unhealthy due to stream error`);
+            // 提取错误状态码
+            const errorStatusCode = error.status || error.code || error.response?.status || null;
+            console.log(`[Provider Pool] Marking ${toProvider} as unhealthy due to unary error (status: ${errorStatusCode})`);
             // 如果是号池模式，并且请求处理失败，则标记当前使用的提供者为不健康
             providerPoolManager.markProviderUnhealthy(toProvider, {
                 uuid: pooluuid
-            });
+            }, error.message, errorStatusCode);
         }
 
         // 使用新方法创建符合 fromProvider 格式的错误响应
@@ -351,11 +355,14 @@ export async function handleModelListRequest(req, res, service, endpointType, CO
         res.end(JSON.stringify(clientModelList));
     } catch (error) {
         console.error('\n[Server] Error during model list processing:', error.stack);
-        if (providerPoolManager) {
+        if (providerPoolManager && pooluuid) {
+            // 提取错误状态码
+            const errorStatusCode = error.status || error.code || error.response?.status || null;
+            console.log(`[Provider Pool] Marking ${toProvider} as unhealthy due to model list error (status: ${errorStatusCode})`);
             // 如果是号池模式，并且请求处理失败，则标记当前使用的提供者为不健康
             providerPoolManager.markProviderUnhealthy(toProvider, {
                 uuid: pooluuid
-            });
+            }, error.message, errorStatusCode);
         }
     }
 }

@@ -173,8 +173,9 @@ export class ProviderPoolManager {
      * @param {string} providerType - The type of the provider.
      * @param {object} providerConfig - The configuration of the provider to mark.
      * @param {string} [errorMessage] - Optional error message to store.
+     * @param {number} [errorStatusCode] - Optional HTTP status code of the error.
      */
-    markProviderUnhealthy(providerType, providerConfig, errorMessage = null) {
+    markProviderUnhealthy(providerType, providerConfig, errorMessage = null, errorStatusCode = null) {
         if (!providerConfig?.uuid) {
             this._log('error', 'Invalid providerConfig in markProviderUnhealthy');
             return;
@@ -182,12 +183,37 @@ export class ProviderPoolManager {
 
         const provider = this._findProvider(providerType, providerConfig.uuid);
         if (provider) {
+            // 如果未启用健康检查，只有 401 认证错误才记录错误并标记为不健康
+            if (!provider.config.checkHealth) {
+                // 401: 认证失败（token 过期或无效）- 需要人工干预
+                // 注意：403 可能是临时性问题（如某些 API 的限流），不在此处理
+                const isAuthError = errorStatusCode === 401;
+                
+                if (!isAuthError) {
+                    this._log('debug', `Provider ${providerConfig.uuid} (${providerType}) error ignored: checkHealth is disabled and error is not 401 (status: ${errorStatusCode})`);
+                    return;
+                }
+                
+                // 401 认证错误：立即标记为不健康，不需要累计错误次数
+                provider.config.isHealthy = false;
+                provider.config.lastErrorTime = new Date().toISOString();
+                provider.config.lastErrorMessage = errorMessage || `Authentication error (${errorStatusCode})`;
+                provider.config.lastErrorStatusCode = errorStatusCode;
+                this._log('warn', `Provider ${providerConfig.uuid} (${providerType}) marked unhealthy due to 401 auth error: ${errorMessage}`);
+                this._debouncedSave(providerType);
+                return;
+            }
+            
+            // 启用健康检查的情况：使用原有的错误计数机制
             provider.config.errorCount++;
             provider.config.lastErrorTime = new Date().toISOString();
             
             // 保存错误信息
             if (errorMessage) {
                 provider.config.lastErrorMessage = errorMessage;
+            }
+            if (errorStatusCode) {
+                provider.config.lastErrorStatusCode = errorStatusCode;
             }
 
             if (provider.config.errorCount >= this.maxErrorCount) {

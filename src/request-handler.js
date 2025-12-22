@@ -102,12 +102,14 @@ export function createRequestHandler(config, providerPoolManager) {
         try {
             apiService = await getApiService(currentConfig);
         } catch (error) {
-            handleError(res, { statusCode: 500, message: `Failed to get API service: ${error.message}` });
+            // 提取错误状态码
+            const errorStatusCode = error.status || error.code || error.response?.status || 500;
+            handleError(res, { statusCode: errorStatusCode, message: `Failed to get API service: ${error.message}` });
             const poolManager = getProviderPoolManager();
-            if (poolManager) {
+            if (poolManager && currentConfig.uuid) {
                 poolManager.markProviderUnhealthy(currentConfig.MODEL_PROVIDER, {
                     uuid: currentConfig.uuid
-                });
+                }, error.message, errorStatusCode);
             }
             return;
         }
