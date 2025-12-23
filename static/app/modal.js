@@ -61,6 +61,11 @@ function showProviderManagerModal(data) {
                         <button class="btn ${providers.filter(p => p.useProxy).length > providers.length / 2 ? 'btn-primary' : 'btn-outline'}" id="toggleAllProxyBtn" onclick="window.toggleAllProvidersProxy('${providerType}')" title="统一切换所有节点的代理状态">
                             <i class="fas fa-globe"></i> ${providers.filter(p => p.useProxy).length > providers.length / 2 ? '禁用代理' : '启用代理'}
                         </button>
+                        ${providerType === 'claude-kiro-oauth' ? `
+                        <button class="btn btn-batch-upload" onclick="window.showBatchUploadKiroModal('${providerType}')" title="批量上传多个 kiro-auth-token.json 文件">
+                            <i class="fas fa-upload"></i> 批量上传
+                        </button>
+                        ` : ''}
                         <button class="btn btn-success" onclick="window.showAddProviderForm('${providerType}')">
                             <i class="fas fa-plus"></i> 添加新提供商
                         </button>
@@ -1719,6 +1724,86 @@ async function toggleAllProvidersProxy(providerType) {
     }
 }
 
+/**
+ * 显示批量上传 Kiro 凭据的文件选择对话框
+ * @param {string} providerType - 提供商类型
+ */
+function showBatchUploadKiroModal(providerType) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.json';
+    
+    input.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+        
+        if (!confirm(`确定要上传 ${files.length} 个 Kiro 凭据文件吗？`)) return;
+        
+        await batchUploadKiroCredentials(files, providerType);
+    };
+    
+    input.click();
+}
+
+/**
+ * 批量上传 Kiro 凭据文件
+ * @param {File[]} files - 文件列表
+ * @param {string} providerType - 提供商类型
+ */
+async function batchUploadKiroCredentials(files, providerType) {
+    showToast(`正在上传 ${files.length} 个凭据文件...`, 'info');
+    
+    let successCount = 0;
+    let failCount = 0;
+    const errors = [];
+    
+    for (const file of files) {
+        try {
+            // 验证 JSON 格式
+            const content = await file.text();
+            let json;
+            try {
+                json = JSON.parse(content);
+            } catch (parseError) {
+                throw new Error('无效的 JSON 格式');
+            }
+            
+            // 验证必要字段 (accessToken 或 clientId+clientSecret)
+            if (!json.accessToken && !(json.clientId && json.clientSecret)) {
+                throw new Error('缺少必要的认证字段 (accessToken 或 clientId+clientSecret)');
+            }
+            
+            // 创建 FormData 上传
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('providerType', providerType);
+            
+            await window.apiClient.upload('/upload-credentials', formData);
+            successCount++;
+        } catch (error) {
+            failCount++;
+            errors.push(`${file.name}: ${error.message}`);
+            console.error(`上传失败 ${file.name}:`, error);
+        }
+    }
+    
+    // 显示结果
+    if (failCount === 0) {
+        showToast(`成功上传 ${successCount} 个凭据文件`, 'success');
+    } else {
+        showToast(`上传完成: 成功 ${successCount} 个, 失败 ${failCount} 个`, 'warning');
+        if (errors.length > 0) {
+            console.error('上传失败详情:', errors);
+        }
+    }
+    
+    // 刷新提供商列表
+    if (successCount > 0) {
+        await refreshProviderConfig(providerType);
+    }
+}
+
 // 导出所有函数，并挂载到window对象供HTML调用
 export {
     showProviderManagerModal,
@@ -1738,7 +1823,9 @@ export {
     performHealthCheck,
     loadModelsForProviderType,
     renderNotSupportedModelsSelector,
-    goToProviderPage
+    goToProviderPage,
+    showBatchUploadKiroModal,
+    batchUploadKiroCredentials
 };
 
 // 将函数挂载到window对象
@@ -1756,3 +1843,4 @@ window.toggleAllProvidersProxy = toggleAllProvidersProxy;
 window.resetAllProvidersHealth = resetAllProvidersHealth;
 window.performHealthCheck = performHealthCheck;
 window.goToProviderPage = goToProviderPage;
+window.showBatchUploadKiroModal = showBatchUploadKiroModal;
