@@ -1,0 +1,291 @@
+{
+  "timestamp": "2025-12-25T02:45:53.765Z",
+  "providers": {
+    "claude-kiro-oauth": {
+      "providerType": "claude-kiro-oauth",
+      "instances": [
+        {
+          "uuid": "fa171094-5113-403d-8fec-5d19e1ec8f1c",
+          "name": "kiro-tllxgu9ujzu",
+          "customName": "kiro-tllxgu9ujzu",
+          "credFilePath": "1766230260225_kiro-auth-token/1766230260224_kiro-auth-token.json",
+          "authProvider": "Google",
+          "isHealthy": false,
+          "isDisabled": true,
+          "success": false,
+          "usage": null,
+          "error": "提供商已禁用"
+        },
+        {
+          "uuid": "365bc746-b6df-4b43-a15a-18600bc60dd2",
+          "name": "mac02-google",
+          "customName": "mac02-google",
+          "credFilePath": "1766287994583_kiro-auth-token/1766287994580_kiro-auth-token.json",
+          "authProvider": null,
+          "isHealthy": false,
+          "isDisabled": false,
+          "success": false,
+          "usage": null,
+          "error": "Token refresh failed: Request failed with status code 401"
+        },
+        {
+          "uuid": "5c927d14-8741-4cd5-8636-8a4e1e2aab38",
+          "name": "mac02-github",
+          "customName": "mac02-github",
+          "credFilePath": "1766288069958_kiro-auth-token/1766288069957_kiro-auth-token.json",
+          "authProvider": "Github",
+          "isHealthy": true,
+          "isDisabled": false,
+          "success": true,
+          "usage": {
+            "daysUntilReset": 0,
+            "nextDateReset": "2026-01-01T00:00:00.000Z",
+            "subscription": {
+              "title": "KIRO FREE",
+              "type": "Q_DEVELOPER_STANDALONE_FREE",
+              "upgradeCapability": "UPGRADE_CAPABLE",
+              "overageCapability": "OVERAGE_INCAPABLE"
+            },
+            "user": {
+              "email": "mac02@lofyer.org",
+              "userId": "d-9067c98495.c428a488-40e1-70ac-b53c-9ef937e8a58d"
+            },
+            "usageBreakdown": [
+              {
+                "resourceType": "CREDIT",
+                "displayName": "Credit",
+                "displayNamePlural": "Credits",
+                "unit": "INVOCATIONS",
+                "currency": "USD",
+                "currentUsage": 0,
+                "usageLimit": 50,
+                "currentOverages": 0,
+                "overageCap": 10000,
+                "overageRate": 0.04,
+                "overageCharges": 0,
+                "nextDateReset": "2026-01-01T00:00:00.000Z",
+                "freeTrial": {
+                  "status": "ACTIVE",
+                  "currentUsage": 317.91,
+                  "usageLimit": 500,
+                  "expiresAt": "2026-01-20T03:33:55.529Z"
+                },
+                "bonuses": []
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "uuid": "bb5e0621-9192-48b7-b52b-1d2aaff3fc12",
+          "name": "kiro-3-github-2",
+          "customName": "kiro-3-github-2",
+          "credFilePath": "1766333629388_1766333629372_oauth_creds/1766333629385_1766333629372_oauth_creds.json",
+          "authProvider": "Github",
+          "isHealthy": true,
+          "isDisabled": false,
+          "success": true,
+          "usage": {
+            "daysUntilReset": 0,
+            "nextDateReset": "2026-01-01T00:00:00.000Z",
+            "subscription": {
+              "title": "KIRO FREE",
+              "type": "Q_DEVELOPER_STANDALONE_FREE",
+              "upgradeCapability": "UPGRADE_CAPABLE",
+              "overageCapability": "OVERAGE_INCAPABLE"
+            },
+            "user": {
+              "email": "lofyer@gmail.com",
+              "userId": "d-9067c98495.e468f488-2061-708e-6de9-8b114b75c1fc"
+            },
+            "usageBreakdown": [
+              {
+                "resourceType": "CREDIT",
+                "displayName": "Credit",
+                "displayNamePlural": "Credits",
+                "unit": "INVOCATIONS",
+                "currency": "USD",
+                "currentUsage": 0,
+                "usageLimit": 50,
+                "currentOverages": 0,
+                "overageCap": 10000,
+                "overageRate": 0.04,
+                "overageCharges": 0,
+                "nextDateReset": "2026-01-01T00:00:00.000Z",
+                "freeTrial": {
+                  "status": "ACTIVE",
+                  "currentUsage": 421.42,
+                  "usageLimit": 500,
+                  "expiresAt": "2026-01-18T07:36:52.689Z"
+                },
+                "bonuses": []
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "uuid": "23438e1a-862e-49bc-aace-097c058b5828",
+          "name": "lgx-github",
+          "customName": "lgx-github",
+          "credFilePath": "1766371425582_1766371425567_oauth_creds/1766371425578_1766371425567_oauth_creds.json",
+          "authProvider": "Github",
+          "isHealthy": true,
+          "isDisabled": false,
+          "success": true,
+          "usage": {
+            "daysUntilReset": 0,
+            "nextDateReset": "2026-01-01T00:00:00.000Z",
+            "subscription": {
+              "title": "KIRO FREE",
+              "type": "Q_DEVELOPER_STANDALONE_FREE",
+              "upgradeCapability": "UPGRADE_CAPABLE",
+              "overageCapability": "OVERAGE_INCAPABLE"
+            },
+            "user": {
+              "email": "lgx5wkv91@uiu.xintaitong.com",
+              "userId": "d-9067c98495.b4a82468-3021-7046-9cfa-4017fde44953"
+            },
+            "usageBreakdown": [
+              {
+                "resourceType": "CREDIT",
+                "displayName": "Credit",
+                "displayNamePlural": "Credits",
+                "unit": "INVOCATIONS",
+                "currency": "USD",
+                "currentUsage": 0,
+                "usageLimit": 50,
+                "currentOverages": 0,
+                "overageCap": 10000,
+                "overageRate": 0.04,
+                "overageCharges": 0,
+                "nextDateReset": "2026-01-01T00:00:00.000Z",
+                "freeTrial": {
+                  "status": "ACTIVE",
+                  "currentUsage": 376.12,
+                  "usageLimit": 500,
+                  "expiresAt": "2026-01-19T03:55:17.569Z"
+                },
+                "bonuses": []
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "uuid": "47c1f1ea-db44-45c2-a6a8-0fd6364348b0",
+          "name": "mac03-google",
+          "customName": "mac03-google",
+          "credFilePath": "1766392938230_kiro-auth-token/1766392938228_kiro-auth-token.json",
+          "authProvider": "Google",
+          "isHealthy": true,
+          "isDisabled": false,
+          "success": true,
+          "usage": {
+            "daysUntilReset": 0,
+            "nextDateReset": "2026-01-01T00:00:00.000Z",
+            "subscription": {
+              "title": "KIRO FREE",
+              "type": "Q_DEVELOPER_STANDALONE_FREE",
+              "upgradeCapability": "UPGRADE_CAPABLE",
+              "overageCapability": "OVERAGE_INCAPABLE"
+            },
+            "user": {
+              "email": "mac03@lofyer.org",
+              "userId": "d-9067c98495.e48884a8-7011-701e-3e31-2367735cf1d1"
+            },
+            "usageBreakdown": [
+              {
+                "resourceType": "CREDIT",
+                "displayName": "Credit",
+                "displayNamePlural": "Credits",
+                "unit": "INVOCATIONS",
+                "currency": "USD",
+                "currentUsage": 0,
+                "usageLimit": 50,
+                "currentOverages": 0,
+                "overageCap": 10000,
+                "overageRate": 0.04,
+                "overageCharges": 0,
+                "nextDateReset": "2026-01-01T00:00:00.000Z",
+                "freeTrial": {
+                  "status": "ACTIVE",
+                  "currentUsage": 166.39,
+                  "usageLimit": 500,
+                  "expiresAt": "2026-01-21T08:41:45.873Z"
+                },
+                "bonuses": []
+              }
+            ]
+          },
+          "error": null
+        },
+        {
+          "uuid": "54d2d22a-4ace-40ec-9338-aa500f887a77",
+          "name": "cytrus6160-google",
+          "customName": "cytrus6160-google",
+          "credFilePath": "1766583328274_kiro-auth-token/1766583328272_kiro-auth-token.json",
+          "authProvider": "Google",
+          "isHealthy": true,
+          "isDisabled": false,
+          "success": true,
+          "usage": {
+            "daysUntilReset": 0,
+            "nextDateReset": "2026-01-01T00:00:00.000Z",
+            "subscription": {
+              "title": "KIRO FREE",
+              "type": "Q_DEVELOPER_STANDALONE_FREE",
+              "upgradeCapability": "UPGRADE_CAPABLE",
+              "overageCapability": "OVERAGE_INCAPABLE"
+            },
+            "user": {
+              "email": "cytrus6160@gmail.com",
+              "userId": "d-9067c98495.84c844a8-10b1-7027-c6a0-cab97bef0cef"
+            },
+            "usageBreakdown": [
+              {
+                "resourceType": "CREDIT",
+                "displayName": "Credit",
+                "displayNamePlural": "Credits",
+                "unit": "INVOCATIONS",
+                "currency": "USD",
+                "currentUsage": 0,
+                "usageLimit": 50,
+                "currentOverages": 0,
+                "overageCap": 10000,
+                "overageRate": 0.04,
+                "overageCharges": 0,
+                "nextDateReset": "2026-01-01T00:00:00.000Z",
+                "freeTrial": {
+                  "status": "ACTIVE",
+                  "currentUsage": 10.79,
+                  "usageLimit": 500,
+                  "expiresAt": "2026-01-23T13:26:13.416Z"
+                },
+                "bonuses": []
+              }
+            ]
+          },
+          "error": null
+        }
+      ],
+      "totalCount": 7,
+      "successCount": 5,
+      "errorCount": 2
+    },
+    "gemini-cli-oauth": {
+      "providerType": "gemini-cli-oauth",
+      "instances": [],
+      "totalCount": 0,
+      "successCount": 0,
+      "errorCount": 0
+    },
+    "gemini-antigravity": {
+      "providerType": "gemini-antigravity",
+      "instances": [],
+      "totalCount": 0,
+      "successCount": 0,
+      "errorCount": 0
+    }
+  }
+}

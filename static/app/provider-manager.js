@@ -18,11 +18,13 @@ async function loadSystemInfo() {
     try {
         const data = await window.apiClient.get('/system');
 
+        const appVersionEl = document.getElementById('appVersion');
         const nodeVersionEl = document.getElementById('nodeVersion');
         const serverTimeEl = document.getElementById('serverTime');
         const memoryUsageEl = document.getElementById('memoryUsage');
         const uptimeEl = document.getElementById('uptime');
 
+        if (appVersionEl) appVersionEl.textContent = data.appVersion ? `v${data.appVersion}` : '--';
         if (nodeVersionEl) nodeVersionEl.textContent = data.nodeVersion || '--';
         if (memoryUsageEl) memoryUsageEl.textContent = data.memoryUsage || '--';
         
@@ -498,6 +500,9 @@ function showAuthModal(authUrl, authInfo) {
     // 获取授权文件路径
     const authFilePath = getAuthFilePath(authInfo.provider);
     
+    // 获取需要开放的端口号（从 authInfo 或当前页面 URL）
+    const requiredPort = authInfo.callbackPort || authInfo.port || window.location.port || '3000';
+    
     let instructionsHtml = '';
     if (authInfo.provider === 'openai-qwen-oauth') {
         instructionsHtml = `
@@ -547,7 +552,15 @@ function showAuthModal(authUrl, authInfo) {
             </div>
             <div class="modal-body">
                 <div class="auth-info">
-                    <p><strong>提供商:</strong> ${authInfo.provider}</p>
+                    <p><strong data-i18n="oauth.modal.provider">${t('oauth.modal.provider')}</strong> ${authInfo.provider}</p>
+                    <div class="port-info-section" style="margin: 12px 0; padding: 12px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px;">
+                        <p style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-network-wired" style="color: #d97706;"></i>
+                            <strong data-i18n="oauth.modal.requiredPort">${t('oauth.modal.requiredPort')}</strong>
+                            <code style="background: #fff; padding: 2px 8px; border-radius: 4px; font-weight: bold; color: #d97706;">${requiredPort}</code>
+                        </p>
+                        <p style="margin: 8px 0 0 0; font-size: 0.85rem; color: #92400e;" data-i18n="oauth.modal.portNote">${t('oauth.modal.portNote')}</p>
+                    </div>
                     ${instructionsHtml}
                     <div class="auth-url-section">
                         <label>授权链接:</label>
