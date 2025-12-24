@@ -207,6 +207,8 @@ export class ProviderPoolManager {
             // 启用健康检查的情况：使用原有的错误计数机制
             provider.config.errorCount++;
             provider.config.lastErrorTime = new Date().toISOString();
+            // 更新 lastUsed 时间，避免因 LRU 策略导致失败节点被重复选中
+            provider.config.lastUsed = new Date().toISOString();
             
             // 保存错误信息
             if (errorMessage) {
