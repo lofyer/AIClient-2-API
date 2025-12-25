@@ -1087,6 +1087,9 @@ async initializeAuth(forceRefresh = false) {
             }
 
             console.error('[Kiro] API call failed:', error.message);
+            if (error.response?.data) {
+                console.error('[Kiro] API error response:', JSON.stringify(error.response.data, null, 2));
+            }
             throw error;
         }
     }
@@ -1908,8 +1911,27 @@ async initializeAuth(forceRefresh = false) {
                     throw refreshError;
                 }
             }
-            console.error('[Kiro] Failed to fetch usage limits:', error.message, error);
-            throw error;
+            // 提取完整的错误信息，包括 response body
+            let errorMessage = error.message;
+            if (error.response) {
+                const status = error.response.status;
+                const data = error.response.data;
+                if (data) {
+                    if (typeof data === 'string') {
+                        errorMessage = `HTTP ${status}: ${data}`;
+                    } else if (typeof data === 'object') {
+                        const bodyMessage = data.message || data.error?.message || JSON.stringify(data);
+                        const reason = data.reason ? ` (${data.reason})` : '';
+                        errorMessage = `HTTP ${status}: ${bodyMessage}${reason}`;
+                    }
+                } else {
+                    errorMessage = `HTTP ${status}: ${error.message}`;
+                }
+            }
+            console.error('[Kiro] Failed to fetch usage limits:', errorMessage);
+            const enhancedError = new Error(errorMessage);
+            enhancedError.response = error.response;
+            throw enhancedError;
         }
     }
 }

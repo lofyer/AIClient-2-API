@@ -3007,20 +3007,14 @@ input:checked + .toggle-slider:before {
     background: var(--success-color);
 }
 
-/* 禁用状态下的交互效果 */
-.provider-item-detail.disabled .provider-actions-group .btn-edit {
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-/* 删除按钮在禁用状态下仍可点击 */
-.provider-item-detail.disabled .provider-actions-group .btn-delete {
+/* 禁用状态下的交互效果 - 所有按钮都可点击 */
+.provider-item-detail.disabled .provider-actions-group .btn-edit,
+.provider-item-detail.disabled .provider-actions-group .btn-delete,
+.provider-item-detail.disabled .provider-actions-group .btn-toggle,
+.provider-item-detail.disabled .provider-actions-group .btn-proxy,
+.provider-item-detail.disabled .provider-actions-group .btn-small {
     opacity: 1;
     pointer-events: auto;
-}
-
-.provider-item-detail.disabled .provider-actions-group .btn-toggle {
-    opacity: 1;
 }
 
 /* 统计信息中的禁用状态显示 */

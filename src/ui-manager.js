@@ -2433,7 +2433,26 @@ async function getProviderTypeUsage(providerType, currentConfig, providerPoolMan
                 instanceResult.usage = usage;
                 result.successCount++;
             } catch (error) {
-                instanceResult.error = error.message;
+                // 提取完整的错误信息，包括 response body
+                let errorMessage = error.message;
+                if (error.response) {
+                    const status = error.response.status;
+                    const data = error.response.data;
+                    if (data) {
+                        // 尝试解析 error body
+                        if (typeof data === 'string') {
+                            errorMessage = `HTTP ${status}: ${data}`;
+                        } else if (typeof data === 'object') {
+                            // 提取 message 和 reason 字段
+                            const bodyMessage = data.message || data.error?.message || JSON.stringify(data);
+                            const reason = data.reason ? ` (${data.reason})` : '';
+                            errorMessage = `HTTP ${status}: ${bodyMessage}${reason}`;
+                        }
+                    } else {
+                        errorMessage = `HTTP ${status}: ${error.message}`;
+                    }
+                }
+                instanceResult.error = errorMessage;
                 result.errorCount++;
             }
         }

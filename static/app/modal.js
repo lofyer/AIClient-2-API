@@ -54,6 +54,10 @@ function showProviderManagerModal(data) {
                         <span class="value">${totalCount}</span>
                     </div>
                     <div class="provider-summary-item">
+                        <span class="label">启用账户:</span>
+                        <span class="value">${providers.filter(p => !p.isDisabled).length}</span>
+                    </div>
+                    <div class="provider-summary-item">
                         <span class="label">健康账户:</span>
                         <span class="value">${healthyCount}</span>
                     </div>
@@ -375,13 +379,14 @@ function renderProviderList(providers) {
         const proxyIcon = useProxy ? 'fas fa-globe text-primary' : 'fas fa-globe text-muted';
         const proxyText = useProxy ? '已启用' : '未启用';
         
-        // 构建错误信息显示
+        // 构建错误信息显示（无论健康状态如何，只要有错误信息就显示）
         let errorInfoHtml = '';
-        if (!isHealthy && provider.lastErrorMessage) {
+        if (provider.lastErrorMessage) {
             const escapedErrorMsg = provider.lastErrorMessage.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const errorClass = isHealthy ? 'text-warning' : 'text-danger';
             errorInfoHtml = `
                 <div class="provider-error-info">
-                    <i class="fas fa-exclamation-circle text-danger"></i>
+                    <i class="fas fa-exclamation-circle ${errorClass}"></i>
                     <span class="error-label">最后错误:</span>
                     <span class="error-message" title="${escapedErrorMsg}">${escapedErrorMsg}</span>
                 </div>
@@ -1034,14 +1039,15 @@ async function refreshProviderConfig(providerType) {
             currentProviderType = providerType;
             
             // 更新统计信息
-            const totalCountElement = modal.querySelector('.provider-summary-item .value');
-            if (totalCountElement) {
-                totalCountElement.textContent = data.totalCount;
+            const summaryValues = modal.querySelectorAll('.provider-summary-item .value');
+            if (summaryValues[0]) {
+                summaryValues[0].textContent = data.totalCount;
             }
-            
-            const healthyCountElement = modal.querySelectorAll('.provider-summary-item .value')[1];
-            if (healthyCountElement) {
-                healthyCountElement.textContent = data.healthyCount;
+            if (summaryValues[1]) {
+                summaryValues[1].textContent = data.providers.filter(p => !p.isDisabled).length;
+            }
+            if (summaryValues[2]) {
+                summaryValues[2].textContent = data.healthyCount;
             }
             
             // 更新代理开关按钮状态
