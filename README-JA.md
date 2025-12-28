@@ -31,6 +31,7 @@
 >
 > **📅 バージョン更新ログ**
 >
+> - **2025.12.25** - 設定ファイル統一管理：すべての設定を `configs/` ディレクトリに集約。Dockerユーザーはマウントパスを `-v "ローカルパス:/app/configs"` に更新が必要
 > - **2025.12.11** - Dockerイメージが自動的にビルドされ、Docker Hubで公開されました: [justlikemaki/aiclient-2-api](https://hub.docker.com/r/justlikemaki/aiclient-2-api)
 > - **2025.11.30** - Antigravityプロトコルサポートの追加、Google内部インターフェース経由でGemini 3 Pro、Claude Sonnet 4.5などのモデルへのアクセスをサポート
 > - **2025.11.16** - Ollamaプロトコルサポートの追加、統一インターフェースでサポートされるすべてのモデルにアクセス
@@ -40,7 +41,7 @@
 > - **2025.09.01** - Qwen Code CLIを統合、`qwen3-coder-plus`モデルサポートを追加
 > - **2025.08.29** - アカウントプール管理機能をリリース、マルチアカウントポーリング、自動フェイルオーバー、自動ダウングレード戦略をサポート
 >   - 設定方法：config.jsonに`PROVIDER_POOLS_FILE_PATH`パラメータを追加
->   - 参考設定：[provider_pools.json](./provider_pools.json.example)
+>   - 参考設定：[provider_pools.json](./configs/provider_pools.json.example)
 > - **開発済み履歴**
 >   - Gemini CLI、Kiroなどのクライアント2APIをサポート
 >   - OpenAI、Claude、Geminiの3つのプロトコル相互変換、自動インテリジェント切り替え
@@ -88,6 +89,19 @@
 ### 🚀 クイックスタート
 
 AIClient-2-APIを使い始める最も推奨される方法は、自動起動スクリプトを使用し、**Web UIコンソール**で直接ビジュアル設定を行うことです。
+
+#### 🐳 Docker クイックスタート (推奨)
+
+```bash
+docker run -d -p 3000:3000 -p 8085:8085 -p 8086:8086 -p 19876-19880:19876-19880 --restart=always -v "指定パス:/app/configs" --name aiclient2api justlikemaki/aiclient-2-api
+```
+
+**パラメータ説明**：
+- `-d`：バックグラウンドでコンテナを実行
+- `-p 3000:3000 ...`：ポートマッピング。3000はWeb UI用、その他はOAuthコールバック用（Gemini: 8085, Antigravity: 8086, Kiro: 19876-19880）
+- `--restart=always`：コンテナ自動再起動ポリシー
+- `-v "指定パス:/app/configs"`：設定ディレクトリをマウント（「指定パス」を実際のパスに置き換えてください、例：`/home/user/aiclient-configs`）
+- `--name aiclient2api`：コンテナ名
 
 #### 1. 起動スクリプトの実行
 *   **Linux/macOS**: `chmod +x install-and-run.sh && ./install-and-run.sh`
@@ -156,7 +170,7 @@ AIClient-2-APIを使い始める最も推奨される方法は、自動起動ス
 画像、ドキュメントなど様々なタイプの入力をサポートし、よりリッチなインタラクティブ体験とより強力なアプリケーションシナリオを提供します。
 
 #### 最新モデルサポート
-以下の最新大規模モデルをシームレスにサポート、Web UIまたは[`config.json`](./config.json)で対応するエンドポイントを設定するだけで使用可能：
+以下の最新大規模モデルをシームレスにサポート、Web UIまたは[`config.json`](./configs/config.json)で対応するエンドポイントを設定するだけで使用可能：
 *   **Claude 4.5 Opus** - Anthropic史上最強モデル、Kiro、Antigravity経由でサポート
 *   **Gemini 3 Pro** - Google次世代アーキテクチャプレビュー版、Gemini、Antigravity経由でサポート
 *   **Qwen3 Coder Plus** - アリババ通義千問の最新コード専用モデル、Qwen Code経由でサポート
@@ -202,10 +216,72 @@ Web UI管理インターフェースでは、極めて迅速に認証設定を�
 4. **重要なお知らせ**：Kiroサービス使用ポリシーが更新されました、最新の使用制限と条件については公式ウェブサイトをご確認ください。
 
 #### アカウントプール管理設定
-1. **プール設定ファイルの作成**：[provider_pools.json.example](./provider_pools.json.example) を参考に設定ファイルを作成します
+1. **プール設定ファイルの作成**：[provider_pools.json.example](./configs/provider_pools.json.example) を参考に設定ファイルを作成します
 2. **プールパラメータの設定**：config.json で `PROVIDER_POOLS_FILE_PATH` を設定し、プール設定ファイルを指定します
 3. **起動パラメータ設定**：`--provider-pools-file <path>` パラメータを使用してプール設定ファイルのパスを指定します
 4. **ヘルスチェック**：システムは定期的にヘルスチェックを自動実行し、健全でないプロバイダーを使用しません
+
+#### 高度な設定
+
+##### 1. モデルフィルタリング設定
+
+`notSupportedModels` 設定を通じてサポートされていないモデルを除外でき、システムは自動的にこれらのプロバイダーをスキップします。
+
+**設定方法**：`provider_pools.json` でプロバイダーに `notSupportedModels` フィールドを追加：
+
+```json
+{
+  "gemini-cli-oauth": [
+    {
+      "uuid": "provider-1",
+      "notSupportedModels": ["gemini-3.0-pro", "gemini-3.5-flash"],
+      "checkHealth": true
+    }
+  ]
+}
+```
+
+**動作原理**：
+- 特定のモデルをリクエストする際、システムは自動的にそのモデルをサポートしていないと設定されたプロバイダーをフィルタリングします
+- そのモデルをサポートするプロバイダーのみがリクエストを処理するために選択されます
+
+**使用シナリオ**：
+- 一部のアカウントは割り当てまたは権限の制限により特定のモデルにアクセスできない
+- 異なるアカウントに異なるモデルアクセス権限を割り当てる必要がある
+
+##### 2. クロスタイプフォールバック設定
+
+あるProvider Type（例：`gemini-cli-oauth`）のすべてのアカウントが429割り当て制限により枯渇したり、unhealthyとマークされた場合、システムは直接エラーを返すのではなく、互換性のある別のProvider Type（例：`gemini-antigravity`）に自動的にフォールバックできます。
+
+**設定方法**：`configs/config.json` に `providerFallbackChain` 設定を追加：
+
+```json
+{
+  "providerFallbackChain": {
+    "gemini-cli-oauth": ["gemini-antigravity"],
+    "gemini-antigravity": ["gemini-cli-oauth"],
+    "claude-kiro-oauth": ["claude-custom"],
+    "claude-custom": ["claude-kiro-oauth"]
+  }
+}
+```
+
+**動作原理**：
+1. メインのProvider Typeプールからhealthyなアカウントを選択しようとします
+2. そのタイプのすべてのアカウントがunhealthyまたは429を返す場合：
+   - 設定されたフォールバックタイプを検索
+   - フォールバックタイプがリクエストされたモデルをサポートしているか確認（プロトコル互換性チェック）
+   - フォールバックタイプのプールからhealthyなアカウントを選択
+3. 多段階降格チェーンをサポート：`gemini-cli-oauth → gemini-antigravity → openai-custom`
+4. すべてのフォールバックタイプも利用できない場合のみエラーを返します
+
+**使用シナリオ**：
+- バッチタスクシナリオでは、単一のProvider Typeの無料RPD割り当てが短時間で簡単に枯渇する可能性があります
+- クロスタイプフォールバックを通じて、複数のProviderの独立した割り当てを十分に活用し、全体的な可用性とスループットを向上させることができます
+
+**注意事項**：
+- フォールバックはプロトコル互換タイプ間でのみ発生します（例：`gemini-*` 間、`claude-*` 間）
+- システムは自動的にターゲットProvider Typeがリクエストされたモデルをサポートしているか確認します
 
 ---
 

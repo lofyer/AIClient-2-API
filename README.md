@@ -31,6 +31,7 @@
 >
 > **📅 Version Update Log**
 >
+> - **2025.12.25** - Unified configuration management: All configs centralized to `configs/` directory. Docker users need to update mount path to `-v "local_path:/app/configs"`
 > - **2025.12.11** - Automatically built Docker images are now available on Docker Hub: [justlikemaki/aiclient-2-api](https://hub.docker.com/r/justlikemaki/aiclient-2-api)
 > - **2025.11.30** - Added Antigravity protocol support, enabling access to Gemini 3 Pro, Claude Sonnet 4.5, and other models via Google internal interfaces
 > - **2025.11.16** - Added Ollama protocol support, unified interface to access all supported models (Claude, Gemini, Qwen, OpenAI, etc.)
@@ -39,8 +40,8 @@
 > - **2025.10.18** - Kiro open registration, new accounts get 500 credits, full support for Claude Sonnet 4.5
 > - **2025.09.01** - Integrated Qwen Code CLI, added `qwen3-coder-plus` model support
 > - **2025.08.29** - Released account pool management feature, supporting multi-account polling, intelligent failover, and automatic degradation strategies
->   - Configuration: Add `PROVIDER_POOLS_FILE_PATH` parameter in config.json
->   - Reference configuration: [provider_pools.json](./provider_pools.json.example)
+>   - Configuration: Add `PROVIDER_POOLS_FILE_PATH` parameter in `configs/config.json`
+>   - Reference configuration: [provider_pools.json](./configs/provider_pools.json.example)
 > - **History Developed**
 >   - Support Gemini CLI, Kiro and other client2API
 >   - OpenAI, Claude, Gemini three-protocol mutual conversion, automatic intelligent switching
@@ -88,6 +89,19 @@
 ### 🚀 Quick Start
 
 The most recommended way to use AIClient-2-API is to start it through an automated script and configure it visually directly in the **Web UI console**.
+
+#### 🐳 Docker Quick Start (Recommended)
+
+```bash
+docker run -d -p 3000:3000 -p 8085:8085 -p 8086:8086 -p 19876-19880:19876-19880 --restart=always -v "your_path:/app/configs" --name aiclient2api justlikemaki/aiclient-2-api
+```
+
+**Parameter Description**:
+- `-d`: Run container in background
+- `-p 3000:3000 ...`: Port mapping. 3000 is for Web UI, others are for OAuth callbacks (Gemini: 8085, Antigravity: 8086, Kiro: 19876-19880)
+- `--restart=always`: Container auto-restart policy
+- `-v "your_path:/app/configs"`: Mount configuration directory (replace "your_path" with actual path, e.g., `/home/user/aiclient-configs`)
+- `--name aiclient2api`: Container name
 
 #### 1. Run the startup script
 *   **Linux/macOS**: `chmod +x install-and-run.sh && ./install-and-run.sh`
@@ -156,7 +170,7 @@ Access: `http://localhost:3000` → Login → Sidebar navigation → Take effect
 Supports various input types such as images and documents, providing you with a richer interaction experience and more powerful application scenarios.
 
 #### Latest Model Support
-Seamlessly support the following latest large models, just configure the corresponding endpoint in Web UI or [`config.json`](./config.json):
+Seamlessly support the following latest large models, just configure the corresponding endpoint in Web UI or [`configs/config.json`](./configs/config.json):
 *   **Claude 4.5 Opus** - Anthropic's strongest model ever, now supported via Kiro, Antigravity
 *   **Gemini 3 Pro** - Google's next-generation architecture preview, now supported via Gemini, Antigravity
 *   **Qwen3 Coder Plus** - Alibaba Tongyi Qianwen's latest code-specific model, now supported via Qwen Code
@@ -202,10 +216,72 @@ In the Web UI management interface, you can complete authorization configuration
 4. **Important Notice**: Kiro service usage policy has been updated, please visit the official website for the latest usage restrictions and terms
 
 #### Account Pool Management Configuration
-1. **Create Pool Configuration File**: Create a configuration file referencing [provider_pools.json.example](./provider_pools.json.example)
-2. **Configure Pool Parameters**: Set `PROVIDER_POOLS_FILE_PATH` in config.json to point to the pool configuration file
+1. **Create Pool Configuration File**: Create a configuration file referencing [provider_pools.json.example](./configs/provider_pools.json.example)
+2. **Configure Pool Parameters**: Set `PROVIDER_POOLS_FILE_PATH` in `configs/config.json` to point to the pool configuration file
 3. **Startup Parameter Configuration**: Use the `--provider-pools-file <path>` parameter to specify the pool configuration file path
 4. **Health Check**: The system will automatically perform periodic health checks and avoid using unhealthy providers
+
+#### Advanced Configuration
+
+##### 1. Model Filtering Configuration
+
+Support excluding unsupported models through `notSupportedModels` configuration, the system will automatically skip these providers.
+
+**Configuration**: Add `notSupportedModels` field for providers in `configs/provider_pools.json`:
+
+```json
+{
+  "gemini-cli-oauth": [
+    {
+      "uuid": "provider-1",
+      "notSupportedModels": ["gemini-3.0-pro", "gemini-3.5-flash"],
+      "checkHealth": true
+    }
+  ]
+}
+```
+
+**How It Works**:
+- When requesting a specific model, the system automatically filters out providers that have configured the model as unsupported
+- Only providers that support the model will be selected to handle the request
+
+**Use Cases**:
+- Some accounts cannot access specific models due to quota or permission restrictions
+- Need to assign different model access permissions to different accounts
+
+##### 2. Cross-Type Fallback Configuration
+
+When all accounts under a Provider Type (e.g., `gemini-cli-oauth`) are exhausted due to 429 quota limits or marked as unhealthy, the system can automatically fallback to another compatible Provider Type (e.g., `gemini-antigravity`) instead of returning an error directly.
+
+**Configuration**: Add `providerFallbackChain` configuration in `configs/config.json`:
+
+```json
+{
+  "providerFallbackChain": {
+    "gemini-cli-oauth": ["gemini-antigravity"],
+    "gemini-antigravity": ["gemini-cli-oauth"],
+    "claude-kiro-oauth": ["claude-custom"],
+    "claude-custom": ["claude-kiro-oauth"]
+  }
+}
+```
+
+**How It Works**:
+1. Try to select a healthy account from the primary Provider Type pool
+2. If all accounts in that type are unhealthy or return 429:
+   - Look up the configured fallback types
+   - Check if the fallback type supports the requested model (protocol compatibility check)
+   - Select a healthy account from the fallback type's pool
+3. Supports multi-level degradation chains: `gemini-cli-oauth → gemini-antigravity → openai-custom`
+4. Only returns an error if all fallback types are also unavailable
+
+**Use Cases**:
+- In batch task scenarios, the free RPD quota of a single Provider Type can be easily exhausted in a short time
+- Through cross-type Fallback, you can fully utilize the independent quotas of multiple Providers, improving overall availability and throughput
+
+**Notes**:
+- Fallback only occurs between protocol-compatible types (e.g., between `gemini-*`, between `claude-*`)
+- The system automatically checks if the target Provider Type supports the requested model
 
 ---
 

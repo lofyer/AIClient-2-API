@@ -3,6 +3,7 @@
 import { elements, autoScroll, setAutoScroll, clearLogs } from './constants.js';
 import { showToast } from './utils.js';
 import { fileUploadHandler } from './file-upload.js';
+import { t } from './i18n.js';
 
 /**
  * 初始化所有事件监听器
@@ -20,7 +21,7 @@ function initEventListeners() {
             if (elements.logsContainer) {
                 elements.logsContainer.innerHTML = '';
             }
-            showToast('日志已清空', 'success');
+            showToast(t('common.success'), t('common.refresh.success'), 'success');
         });
     }
 
@@ -30,9 +31,10 @@ function initEventListeners() {
             const newAutoScroll = !autoScroll;
             setAutoScroll(newAutoScroll);
             elements.toggleAutoScrollBtn.dataset.enabled = newAutoScroll;
+            const statusText = newAutoScroll ? t('logs.autoScroll.on') : t('logs.autoScroll.off');
             elements.toggleAutoScrollBtn.innerHTML = `
                 <i class="fas fa-arrow-down"></i>
-                自动滚动: ${newAutoScroll ? '开' : '关'}
+                <span data-i18n="${newAutoScroll ? 'logs.autoScroll.on' : 'logs.autoScroll.off'}">${statusText}</span>
             `;
         });
     }
@@ -46,9 +48,6 @@ function initEventListeners() {
     if (elements.resetConfigBtn) {
         elements.resetConfigBtn.addEventListener('click', loadInitialData);
     }
-
-    // 全局设置Tab切换
-    initConfigTabs();
 
     // 模型提供商切换
     if (elements.modelProvider) {
@@ -92,37 +91,12 @@ function initEventListeners() {
                     elements.toggleAutoScrollBtn.dataset.enabled = false;
                     elements.toggleAutoScrollBtn.innerHTML = `
                         <i class="fas fa-arrow-down"></i>
-                        自动滚动: 关
+                        <span data-i18n="logs.autoScroll.off">${t('logs.autoScroll.off')}</span>
                     `;
                 }
             }
         });
     }
-}
-
-/**
- * 初始化全局设置Tab切换
- */
-function initConfigTabs() {
-    const configTabs = document.querySelectorAll('.config-tab');
-    const configTabContents = document.querySelectorAll('.config-tab-content');
-    
-    configTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const targetTab = tab.getAttribute('data-tab');
-            
-            // 移除所有active状态
-            configTabs.forEach(t => t.classList.remove('active'));
-            configTabContents.forEach(c => c.classList.remove('active'));
-            
-            // 添加当前active状态
-            tab.classList.add('active');
-            const targetContent = document.querySelector(`[data-tab-content="${targetTab}"]`);
-            if (targetContent) {
-                targetContent.classList.add('active');
-            }
-        });
-    });
 }
 
 /**
@@ -153,18 +127,13 @@ function handleProviderChange() {
 function handleGeminiCredsTypeChange(event) {
     const selectedType = event.target.value;
     const base64Group = document.getElementById('geminiCredsBase64Group');
-    const textGroup = document.getElementById('geminiCredsTextGroup');
     const fileGroup = document.getElementById('geminiCredsFileGroup');
-    
-    if (base64Group) base64Group.style.display = 'none';
-    if (textGroup) textGroup.style.display = 'none';
-    if (fileGroup) fileGroup.style.display = 'none';
     
     if (selectedType === 'base64') {
         if (base64Group) base64Group.style.display = 'block';
-    } else if (selectedType === 'text') {
-        if (textGroup) textGroup.style.display = 'block';
+        if (fileGroup) fileGroup.style.display = 'none';
     } else {
+        if (base64Group) base64Group.style.display = 'none';
         if (fileGroup) fileGroup.style.display = 'block';
     }
 }
@@ -176,18 +145,13 @@ function handleGeminiCredsTypeChange(event) {
 function handleKiroCredsTypeChange(event) {
     const selectedType = event.target.value;
     const base64Group = document.getElementById('kiroCredsBase64Group');
-    const textGroup = document.getElementById('kiroCredsTextGroup');
     const fileGroup = document.getElementById('kiroCredsFileGroup');
-    
-    if (base64Group) base64Group.style.display = 'none';
-    if (textGroup) textGroup.style.display = 'none';
-    if (fileGroup) fileGroup.style.display = 'none';
     
     if (selectedType === 'base64') {
         if (base64Group) base64Group.style.display = 'block';
-    } else if (selectedType === 'text') {
-        if (textGroup) textGroup.style.display = 'block';
+        if (fileGroup) fileGroup.style.display = 'none';
     } else {
+        if (base64Group) base64Group.style.display = 'none';
         if (fileGroup) fileGroup.style.display = 'block';
     }
 }
@@ -227,50 +191,83 @@ async function handleGenerateCreds(event) {
     const targetInputId = button.getAttribute('data-target');
 
     try {
-        showToast('正在初始化凭据生成...', 'info');
-        
-        // 使用 fileUploadHandler 中的 getProviderKey 获取目录名称
-        const providerDir = fileUploadHandler.getProviderKey(providerType);
-
-        const response = await window.apiClient.post(
-            `/providers/${encodeURIComponent(providerType)}/generate-auth-url`,
-            {
-                saveToConfigs: true,
-                providerDir: providerDir
-            }
-        );
-
-        if (response.success && response.authUrl) {
-            // 使用自定义事件监听授权成功，以便自动填充路径
-            const handleSuccess = (e) => {
-                const data = e.detail;
-                if (data.provider === providerType && data.relativePath) {
-                    const input = document.getElementById(targetInputId);
-                    if (input) {
-                        input.value = data.relativePath;
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        showToast('凭据已生成并自动填充路径', 'success');
-                    }
-                    window.removeEventListener('oauth_success_event', handleSuccess);
-                }
-            };
-            window.addEventListener('oauth_success_event', handleSuccess);
+        // 如果是 Kiro OAuth，先显示认证方式选择对话框
+        if (providerType === 'claude-kiro-oauth') {
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.style.display = 'flex';
             
-            // 调用 provider-manager.js 中的 showAuthModal (假设已在全局作用域或通过某种方式可用)
-            // 如果不可用，我们需要在 app.js 中导出它
-            if (window.showAuthModal) {
-                window.showAuthModal(response.authUrl, response.authInfo);
-            } else {
-                // 降级处理：如果在 app.js 中没导出，尝试直接打开
-                window.open(response.authUrl, '_blank');
-                showToast('请在打开的窗口中完成授权', 'info');
-            }
-        } else {
-            showToast('初始化凭据生成失败', 'error');
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-key"></i> <span data-i18n="oauth.kiro.selectMethod">${t('oauth.kiro.selectMethod')}</span></h3>
+                        <button class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="auth-method-options" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!--<button class="auth-method-btn" data-method="google" style="display: flex; align-items: center; gap: 12px; padding: 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; transition: all 0.2s;">
+                                <i class="fab fa-google" style="font-size: 24px; color: #4285f4;"></i>
+                                <div style="text-align: left;">
+                                    <div style="font-weight: 600; color: #333;" data-i18n="oauth.kiro.google">${t('oauth.kiro.google')}</div>
+                                    <div style="font-size: 12px; color: #666;" data-i18n="oauth.kiro.googleDesc">${t('oauth.kiro.googleDesc')}</div>
+                                </div>
+                            </button>
+                            <button class="auth-method-btn" data-method="github" style="display: flex; align-items: center; gap: 12px; padding: 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; transition: all 0.2s;">
+                                <i class="fab fa-github" style="font-size: 24px; color: #333;"></i>
+                                <div style="text-align: left;">
+                                    <div style="font-weight: 600; color: #333;" data-i18n="oauth.kiro.github">${t('oauth.kiro.github')}</div>
+                                    <div style="font-size: 12px; color: #666;" data-i18n="oauth.kiro.githubDesc">${t('oauth.kiro.githubDesc')}</div>
+                                </div>
+                            </button> -->
+                            <button class="auth-method-btn" data-method="builder-id" style="display: flex; align-items: center; gap: 12px; padding: 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; transition: all 0.2s;">
+                                <i class="fab fa-aws" style="font-size: 24px; color: #ff9900;"></i>
+                                <div style="text-align: left;">
+                                    <div style="font-weight: 600; color: #333;" data-i18n="oauth.kiro.awsBuilder">${t('oauth.kiro.awsBuilder')}</div>
+                                    <div style="font-size: 12px; color: #666;" data-i18n="oauth.kiro.awsBuilderDesc">${t('oauth.kiro.awsBuilderDesc')}</div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="modal-cancel" data-i18n="modal.provider.cancel">${t('modal.provider.cancel')}</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            const closeModal = () => modal.remove();
+            modal.querySelector('.modal-close').onclick = closeModal;
+            modal.querySelector('.modal-cancel').onclick = closeModal;
+            
+            modal.querySelectorAll('.auth-method-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const method = btn.dataset.method;
+                    closeModal();
+                    await proceedWithAuth(providerType, targetInputId, { method });
+                };
+            });
+            return;
         }
+
+        await proceedWithAuth(providerType, targetInputId, {});
     } catch (error) {
         console.error('生成凭据失败:', error);
-        showToast(`生成凭据失败: ${error.message}`, 'error');
+        showToast(t('common.error'), t('modal.provider.auth.failed') + `: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * 实际执行授权逻辑
+ */
+async function proceedWithAuth(providerType, targetInputId, extraOptions = {}) {
+    if (window.executeGenerateAuthUrl) {
+        await window.executeGenerateAuthUrl(providerType, {
+            targetInputId,
+            ...extraOptions
+        });
+    } else {
+        console.error('executeGenerateAuthUrl not found');
     }
 }
 
@@ -343,7 +340,7 @@ async function handleRefresh() {
         }
     } catch (error) {
         console.error('刷新失败:', error);
-        showToast('刷新失败: ' + error.message, 'error');
+        showToast(t('common.error'), t('common.refresh.failed') + ': ' + error.message, 'error');
     }
 }
 
@@ -358,7 +355,6 @@ export function setReloadConfig(configReloader) {
 
 export {
     initEventListeners,
-    initConfigTabs,
     handleProviderChange,
     handleGeminiCredsTypeChange,
     handleKiroCredsTypeChange,

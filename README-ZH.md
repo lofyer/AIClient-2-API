@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/img/logo-min.webp" alt="logo"  style="width: 128px; height: 128px;margin-bottom: 3px;">
+<img src="src/img/logo-mid.webp" alt="logo"  style="width: 128px; height: 128px;margin-bottom: 3px;">
 
 # AIClient-2-API 🚀
 
@@ -31,6 +31,7 @@
 >
 > **📅 版本更新日志**
 >
+> - **2025.12.25** - 配置文件统一管理：所有配置集中到 `configs/` 目录，Docker 用户需更新挂载路径为 `-v "本地路径:/app/configs"`
 > - **2025.12.11** - Docker 镜像自动构建并发布到 Docker Hub: [justlikemaki/aiclient-2-api](https://hub.docker.com/r/justlikemaki/aiclient-2-api)
 > - **2025.11.30** - 新增 Antigravity 协议支持，支持通过 Google 内部接口访问 Gemini 3 Pro、Claude Sonnet 4.5 等模型
 > - **2025.11.16** - 新增 Ollama 协议支持，统一接口访问所有支持的模型（Claude、Gemini、Qwen、OpenAI等）
@@ -39,8 +40,8 @@
 > - **2025.10.18** - Kiro 开放注册，新用户赠送 500 额度，已完整支持 Claude Sonnet 4.5
 > - **2025.09.01** - 集成 Qwen Code CLI，新增 `qwen3-coder-plus` 模型支持
 > - **2025.08.29** - 发布账号池管理功能，支持多账号轮询、智能故障转移和自动降级策略
->   - 配置方式：在 config.json 中添加 `PROVIDER_POOLS_FILE_PATH` 参数
->   - 参考配置：[provider_pools.json](./provider_pools.json.example)
+>   - 配置方式：在 `configs/config.json` 中添加 `PROVIDER_POOLS_FILE_PATH` 参数
+>   - 参考配置：[provider_pools.json](./configs/provider_pools.json.example)
 > - **历史已开发**
 >   - 支持 Gemini CLI、Kiro 等客户端2API
 >   - OpenAI ,Claude ,Gemini 三协议互转，自动智能切换
@@ -87,6 +88,19 @@
 ### 🚀 快速启动
 
 使用 AIClient-2-API 最推荐的方式是通过自动化脚本启动，并直接在 **Web UI 控制台** 进行可视化配置。
+
+#### 🐳 Docker 快捷启动 (推荐)
+
+```bash
+docker run -d -p 3000:3000 -p 8085:8085 -p 8086:8086 -p 19876-19880:19876-19880 --restart=always -v "指定路径:/app/configs" --name aiclient2api justlikemaki/aiclient-2-api
+```
+
+**参数说明**：
+- `-d`：后台运行容器
+- `-p 3000:3000 ...`：端口映射。3000 为 Web UI，其余为 OAuth 回调端口（Gemini: 8085, Antigravity: 8086, Kiro: 19876-19880）
+- `--restart=always`：容器自动重启策略
+- `-v "指定路径:/app/configs"`：挂载配置目录（请将"指定路径"替换为实际路径，如 `/home/user/aiclient-configs`）
+- `--name aiclient2api`：容器名称
 
 #### 1. 运行启动脚本
 *   **Linux/macOS**: `chmod +x install-and-run.sh && ./install-and-run.sh`
@@ -155,7 +169,7 @@
 支持图片、文档等多种类型的输入，为您提供更丰富的交互体验和更强大的应用场景。
 
 #### 最新模型支持
-无缝支持以下最新大模型，仅需在 Web UI 或 [`config.json`](./config.json) 中配置相应的端点：
+无缝支持以下最新大模型，仅需在 Web UI 或 [`configs/config.json`](./configs/config.json) 中配置相应的端点：
 *   **Claude 4.5 Opus** - Anthropic 史上最强模型，现已通过 Kiro, Antigravity 支持
 *   **Gemini 3 Pro** - Google 下一代架构预览版，现已通过 Gemini, Antigravity 支持
 *   **Qwen3 Coder Plus** - 阿里通义千问最新代码专用模型，现已通过Qwen Code 支持
@@ -201,10 +215,72 @@
 4. **重要提示**：Kiro 服务使用政策已更新，请访问官方网站查看最新使用限制和条款
 
 #### 账号池管理配置
-1. **创建号池配置文件**：参考 [provider_pools.json.example](./provider_pools.json.example) 创建配置文件
-2. **配置号池参数**：在 config.json 中设置 `PROVIDER_POOLS_FILE_PATH` 指向号池配置文件
+1. **创建号池配置文件**：参考 [provider_pools.json.example](./configs/provider_pools.json.example) 创建配置文件
+2. **配置号池参数**：在 `configs/config.json` 中设置 `PROVIDER_POOLS_FILE_PATH` 指向号池配置文件
 3. **启动参数配置**：使用 `--provider-pools-file <path>` 参数指定号池配置文件路径
 4. **健康检查**：系统会定期自动执行健康检查，不使用不健康的提供商
+
+#### 高级配置
+
+##### 1. 模型过滤配置
+
+支持通过 `notSupportedModels` 配置排除不支持的模型，系统会自动跳过这些提供商。
+
+**配置方式**：在 `configs/provider_pools.json` 中为提供商添加 `notSupportedModels` 字段：
+
+```json
+{
+  "gemini-cli-oauth": [
+    {
+      "uuid": "provider-1",
+      "notSupportedModels": ["gemini-3.0-pro", "gemini-3.5-flash"],
+      "checkHealth": true
+    }
+  ]
+}
+```
+
+**工作原理**：
+- 当请求特定模型时，系统会自动过滤掉配置了该模型为不支持的提供商
+- 只有支持该模型的提供商才会被选中处理请求
+
+**使用场景**：
+- 某些账号因配额或权限限制无法访问特定模型
+- 需要为不同账号分配不同的模型访问权限
+
+##### 2. 跨类型 Fallback 配置
+
+当某一 Provider Type（如 `gemini-cli-oauth`）下的所有账号都因 429 配额耗尽或被标记为 unhealthy 时，系统能够自动 fallback 到另一个兼容的 Provider Type（如 `gemini-antigravity`），而不是直接返回错误。
+
+**配置方式**：在 `configs/config.json` 中添加 `providerFallbackChain` 配置：
+
+```json
+{
+  "providerFallbackChain": {
+    "gemini-cli-oauth": ["gemini-antigravity"],
+    "gemini-antigravity": ["gemini-cli-oauth"],
+    "claude-kiro-oauth": ["claude-custom"],
+    "claude-custom": ["claude-kiro-oauth"]
+  }
+}
+```
+
+**工作原理**：
+1. 尝试从主 Provider Type 池选取 healthy 账号
+2. 如果该类型所有账号都 unhealthy：
+   - 查找配置的 fallback 类型
+   - 检查 fallback 类型是否支持当前请求的模型（协议兼容性检查）
+   - 从 fallback 类型的池中选取 healthy 账号
+3. 支持多级降级链：`gemini-cli-oauth → gemini-antigravity → openai-custom`
+4. 如果所有 fallback 类型也不可用，才返回错误
+
+**使用场景**：
+- 批量任务场景下，单一 Provider Type 的免费 RPD 配额容易在短时间内耗尽
+- 通过跨类型 Fallback，可以充分利用多种 Provider 的独立配额，提高整体可用性和吞吐量
+
+**注意事项**：
+- Fallback 只会在协议兼容的类型之间进行（如 `gemini-*` 之间、`claude-*` 之间）
+- 系统会自动检查目标 Provider Type 是否支持当前请求的模型
 
 ---
 
@@ -220,7 +296,7 @@
 | **Antigravity** | `~/.antigravity/oauth_creds.json` | Antigravity OAuth 凭据 (支持 Claude 4.5 Opus) |
 
 > **说明**：`~` 表示用户主目录（Windows: `C:\Users\用户名`，Linux/macOS: `/home/用户名` 或 `/Users/用户名`）
->
+
 > **自定义路径**：可通过配置文件中的相关参数或环境变量指定自定义存储位置
 
 ---

@@ -2,11 +2,29 @@ import deepmerge from 'deepmerge';
 import { handleError, isAuthorized } from './common.js';
 import { handleUIApiRequests, serveStaticFiles } from './ui-manager.js';
 import { handleAPIRequests } from './api-manager.js';
-import { getApiService } from './service-manager.js';
+import { getApiService, getProviderStatus } from './service-manager.js';
 import { getProviderPoolManager } from './service-manager.js';
 import { MODEL_PROVIDER } from './common.js';
 import { PROMPT_LOG_FILENAME } from './config-manager.js';
 import { handleOllamaRequest, handleOllamaShow } from './ollama-handler.js';
+
+/**
+ * Parse request body as JSON
+ */
+function parseRequestBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                resolve(body ? JSON.parse(body) : {});
+            } catch (e) {
+                reject(new Error('Invalid JSON in request body'));
+            }
+        });
+        req.on('error', reject);
+    });
+}
 
 /**
  * Main request handler. It authenticates the request, determines the endpoint type,
@@ -23,11 +41,13 @@ export function createRequestHandler(config, providerPoolManager) {
         let path = requestUrl.pathname;
         const method = req.method;
 
+        // Set CORS headers for all requests
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-goog-api-key, Model-Provider');
+
         // Handle CORS preflight requests
         if (method === 'OPTIONS') {
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-goog-api-key, Model-Provider');
             res.writeHead(204);
             res.end();
             return;
@@ -62,16 +82,39 @@ export function createRequestHandler(config, providerPoolManager) {
             return true;
         }
 
-        // Ignore count_tokens requests
-        if (path.includes('/count_tokens')) {
-            console.log(`[Server] Ignoring count_tokens request: ${path}`);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-                tokens: 0,
-                message: 'Token counting is not supported'
-            }));
-            return true;
+        // providers health endpoint
+        // url params: provider[string], customName[string], unhealthRatioThreshold[float]
+        // 支持provider, customName过滤记录 
+        // 支持unhealthRatioThreshold控制不健康比例的阈值, 当unhealthyRatio超过阈值返回summaryHealthy: false
+        if (method === 'GET' && path === '/provider_health') {
+            try {
+                const provider = requestUrl.searchParams.get('provider');
+                const customName = requestUrl.searchParams.get('customName');
+                let unhealthRatioThreshold = requestUrl.searchParams.get('unhealthRatioThreshold');
+                unhealthRatioThreshold = unhealthRatioThreshold === null ? 0.0001 : parseFloat(unhealthRatioThreshold);
+                let provideStatus = await getProviderStatus(currentConfig, { provider, customName });
+                let summaryHealth = true;
+                if (!isNaN(unhealthRatioThreshold)) {
+                    summaryHealth = provideStatus.unhealthyRatio <= unhealthRatioThreshold;
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    items: provideStatus.providerPoolsSlim,
+                    count: provideStatus.count,
+                    unhealthyCount: provideStatus.unhealthyCount,
+                    unhealthyRatio: provideStatus.unhealthyRatio,
+                    unhealthySummeryMessage: provideStatus.unhealthySummeryMessage,
+                    summaryHealth
+                }));
+                return true;
+            } catch (error) {
+                console.log(`[Server] req provider_health error: ${error.message}`);
+                handleError(res, { statusCode: 500, message: `Failed to get providers health: ${error.message}` });
+                return;
+            }
         }
+
 
         // Handle API requests
         // Allow overriding MODEL_PROVIDER via request header
@@ -102,14 +145,12 @@ export function createRequestHandler(config, providerPoolManager) {
         try {
             apiService = await getApiService(currentConfig);
         } catch (error) {
-            // 提取错误状态码
-            const errorStatusCode = error.status || error.code || error.response?.status || 500;
-            handleError(res, { statusCode: errorStatusCode, message: `Failed to get API service: ${error.message}` });
+            handleError(res, { statusCode: 500, message: `Failed to get API service: ${error.message}` });
             const poolManager = getProviderPoolManager();
-            if (poolManager && currentConfig.uuid) {
+            if (poolManager) {
                 poolManager.markProviderUnhealthy(currentConfig.MODEL_PROVIDER, {
                     uuid: currentConfig.uuid
-                }, error.message, errorStatusCode);
+                });
             }
             return;
         }
@@ -119,6 +160,37 @@ export function createRequestHandler(config, providerPoolManager) {
             res.writeHead(401, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: { message: 'Unauthorized: API key is invalid or missing.' } }));
             return;
+        }
+
+        // Handle count_tokens requests (Anthropic API compatible)
+        if (path.includes('/count_tokens') && method === 'POST') {
+            try {
+                const body = await parseRequestBody(req);
+                console.log(`[Server] Handling count_tokens request for model: ${body.model}`);
+
+                // Check if apiService has countTokens method
+                if (apiService && typeof apiService.countTokens === 'function') {
+                    const result = apiService.countTokens(body);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(result));
+                } else {
+                    // Fallback: use estimateInputTokens if available
+                    if (apiService && typeof apiService.estimateInputTokens === 'function') {
+                        const inputTokens = apiService.estimateInputTokens(body);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ input_tokens: inputTokens }));
+                    } else {
+                        // Last resort: return 0 with a message
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ input_tokens: 0 }));
+                    }
+                }
+                return true;
+            } catch (error) {
+                console.error(`[Server] count_tokens error: ${error.message}`);
+                handleError(res, { statusCode: 500, message: `Failed to count tokens: ${error.message}` });
+                return;
+            }
         }
 
         try {
