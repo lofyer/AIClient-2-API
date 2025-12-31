@@ -174,8 +174,9 @@ export class ProviderPoolManager {
      * @param {object} providerConfig - The configuration of the provider to mark.
      * @param {string} [errorMessage] - Optional error message to store.
      * @param {number} [errorStatusCode] - Optional HTTP status code of the error.
+     * @param {boolean} [forceUnhealthy] - If true, mark unhealthy regardless of checkHealth config.
      */
-    markProviderUnhealthy(providerType, providerConfig, errorMessage = null, errorStatusCode = null) {
+    markProviderUnhealthy(providerType, providerConfig, errorMessage = null, errorStatusCode = null, forceUnhealthy = false) {
         if (!providerConfig?.uuid) {
             this._log('error', 'Invalid providerConfig in markProviderUnhealthy');
             return;
@@ -183,23 +184,23 @@ export class ProviderPoolManager {
 
         const provider = this._findProvider(providerType, providerConfig.uuid);
         if (provider) {
-            // 如果未启用健康检查，只有 401 认证错误才记录错误并标记为不健康
-            if (!provider.config.checkHealth) {
+            // 如果未启用健康检查且不是强制标记，只有 401/403 认证错误才记录错误并标记为不健康
+            if (!provider.config.checkHealth && !forceUnhealthy) {
                 // 401: 认证失败（token 过期或无效）- 需要人工干预
-                // 注意：403 可能是临时性问题（如某些 API 的限流），不在此处理
-                const isAuthError = errorStatusCode === 401;
+                // 403: 权限被拒绝（账号被封禁或无权限）- 需要人工干预
+                const isAuthError = errorStatusCode === 401 || errorStatusCode === 403;
                 
                 if (!isAuthError) {
-                    this._log('debug', `Provider ${providerConfig.uuid} (${providerType}) error ignored: checkHealth is disabled and error is not 401 (status: ${errorStatusCode})`);
+                    this._log('debug', `Provider ${providerConfig.uuid} (${providerType}) error ignored: checkHealth is disabled and error is not 401/403 (status: ${errorStatusCode})`);
                     return;
                 }
                 
-                // 401 认证错误：立即标记为不健康，不需要累计错误次数
+                // 401/403 认证错误：立即标记为不健康，不需要累计错误次数
                 provider.config.isHealthy = false;
                 provider.config.lastErrorTime = new Date().toISOString();
-                provider.config.lastErrorMessage = errorMessage || `Authentication error (${errorStatusCode})`;
+                provider.config.lastErrorMessage = errorMessage || `Authentication/Permission error (${errorStatusCode})`;
                 provider.config.lastErrorStatusCode = errorStatusCode;
-                this._log('warn', `Provider ${providerConfig.uuid} (${providerType}) marked unhealthy due to 401 auth error: ${errorMessage}`);
+                this._log('warn', `Provider ${providerConfig.uuid} (${providerType}) marked unhealthy due to ${errorStatusCode} error: ${errorMessage}`);
                 this._debouncedSave(providerType);
                 return;
             }
@@ -218,7 +219,11 @@ export class ProviderPoolManager {
                 provider.config.lastErrorStatusCode = errorStatusCode;
             }
 
-            if (provider.config.errorCount >= this.maxErrorCount) {
+            // forceUnhealthy 时直接标记为不健康，不需要累计错误次数
+            if (forceUnhealthy) {
+                provider.config.isHealthy = false;
+                this._log('warn', `Provider ${providerConfig.uuid} (${providerType}) force marked unhealthy: ${errorMessage}`);
+            } else if (provider.config.errorCount >= this.maxErrorCount) {
                 provider.config.isHealthy = false;
                 this._log('warn', `Marked provider as unhealthy: ${providerConfig.uuid} for type ${providerType}. Total errors: ${provider.config.errorCount}`);
             } else {
@@ -531,7 +536,7 @@ export class ProviderPoolManager {
             try {
                 this._log('debug', `Health check attempt ${i + 1}/${maxRetries} for ${modelName}: ${JSON.stringify(healthCheckRequest)}`);
                 await serviceAdapter.generateContent(modelName, healthCheckRequest);
-                return { success: true, modelName, errorMessage: null };
+                return { success: true, modelName, errorMessage: null, errorStatusCode: null };
             } catch (error) {
                 lastError = error;
                 this._log('debug', `Health check attempt ${i + 1} failed for ${providerType}: ${error.message}`);
@@ -539,9 +544,10 @@ export class ProviderPoolManager {
             }
         }
         
-        // 所有尝试都失败
-        this._log('error', `Health check failed for ${providerType} after ${maxRetries} attempts: ${lastError?.message}`);
-        return { success: false, modelName, errorMessage: lastError?.message || 'All health check attempts failed' };
+        // 所有尝试都失败，提取错误状态码
+        const errorStatusCode = lastError?.status || lastError?.code || lastError?.response?.status || null;
+        this._log('error', `Health check failed for ${providerType} after ${maxRetries} attempts: ${lastError?.message} (status: ${errorStatusCode})`);
+        return { success: false, modelName, errorMessage: lastError?.message || 'All health check attempts failed', errorStatusCode };
     }
 
     /**

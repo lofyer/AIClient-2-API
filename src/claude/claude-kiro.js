@@ -1066,7 +1066,11 @@ async initializeAuth(forceRefresh = false) {
                     return this.callApi(method, model, body, true, retryCount);
                 } catch (refreshError) {
                     console.error('[Kiro] Token refresh failed during 403 retry:', refreshError.message);
-                    throw refreshError;
+                    // 保留原始的 403 状态码，以便上层正确识别
+                    const enhancedError = new Error(`Token refresh failed after 403: ${refreshError.message}`);
+                    enhancedError.status = 403;
+                    enhancedError.response = { status: 403 };
+                    throw enhancedError;
                 }
             }
             
@@ -1360,9 +1364,18 @@ async initializeAuth(forceRefresh = false) {
             
             if (error.response?.status === 403 && !isRetry) {
                 console.log('[Kiro] Received 403 in stream. Attempting token refresh and retrying...');
-                await this.initializeAuth(true);
-                yield* this.streamApiReal(method, model, body, true, retryCount);
-                return;
+                try {
+                    await this.initializeAuth(true);
+                    yield* this.streamApiReal(method, model, body, true, retryCount);
+                    return;
+                } catch (refreshError) {
+                    console.error('[Kiro] Token refresh failed during 403 stream retry:', refreshError.message);
+                    // 保留原始的 403 状态码，以便上层正确识别
+                    const enhancedError = new Error(`Token refresh failed after 403: ${refreshError.message}`);
+                    enhancedError.status = 403;
+                    enhancedError.response = { status: 403 };
+                    throw enhancedError;
+                }
             }
             
             if (error.response?.status === 429 && retryCount < maxRetries) {

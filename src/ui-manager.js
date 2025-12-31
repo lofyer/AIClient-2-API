@@ -792,7 +792,12 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
         let providerPools = {};
         const filePath = currentConfig.PROVIDER_POOLS_FILE_PATH || 'provider_pools.json';
         try {
-            if (providerPoolManager && providerPoolManager.providerPools) {
+            // 优先从 providerStatus 获取最新状态（包含健康检测后的更新）
+            if (providerPoolManager && providerPoolManager.providerStatus) {
+                for (const pType in providerPoolManager.providerStatus) {
+                    providerPools[pType] = providerPoolManager.providerStatus[pType].map(ps => ps.config);
+                }
+            } else if (providerPoolManager && providerPoolManager.providerPools) {
                 providerPools = providerPoolManager.providerPools;
             } else if (filePath && existsSync(filePath)) {
                 const poolsData = JSON.parse(readFileSync(filePath, 'utf-8'));
@@ -811,20 +816,22 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
     const providerTypeMatch = pathParam.match(/^\/api\/providers\/([^\/]+)$/);
     if (method === 'GET' && providerTypeMatch) {
         const providerType = decodeURIComponent(providerTypeMatch[1]);
-        let providerPools = {};
+        let providers = [];
         const filePath = currentConfig.PROVIDER_POOLS_FILE_PATH || 'provider_pools.json';
         try {
-            if (providerPoolManager && providerPoolManager.providerPools) {
-                providerPools = providerPoolManager.providerPools;
+            // 优先从 providerStatus 获取最新状态（包含健康检测后的更新）
+            if (providerPoolManager && providerPoolManager.providerStatus && providerPoolManager.providerStatus[providerType]) {
+                providers = providerPoolManager.providerStatus[providerType].map(ps => ps.config);
+            } else if (providerPoolManager && providerPoolManager.providerPools && providerPoolManager.providerPools[providerType]) {
+                providers = providerPoolManager.providerPools[providerType];
             } else if (filePath && existsSync(filePath)) {
                 const poolsData = JSON.parse(readFileSync(filePath, 'utf-8'));
-                providerPools = poolsData;
+                providers = poolsData[providerType] || [];
             }
         } catch (error) {
             console.warn('[UI API] Failed to load provider pools:', error.message);
         }
 
-        const providers = providerPools[providerType] || [];
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             providerType,
@@ -1234,7 +1241,14 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
             // Update provider pool manager if available
             if (providerPoolManager) {
                 providerPoolManager.providerPools = providerPools;
-                providerPoolManager.initializeProviderStatus();
+                // 同步更新 providerStatus 中的状态
+                if (providerPoolManager.providerStatus[providerType]) {
+                    providerPoolManager.providerStatus[providerType].forEach(ps => {
+                        ps.config.isHealthy = true;
+                        ps.config.errorCount = 0;
+                        ps.config.lastErrorTime = null;
+                    });
+                }
             }
 
             // 广播更新事件
@@ -1309,7 +1323,8 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
                             message: '健康'
                         });
                     } else {
-                        providerPoolManager.markProviderUnhealthy(providerType, providerConfig, healthResult.errorMessage);
+                        // 健康检测接口强制标记为不健康
+                        providerPoolManager.markProviderUnhealthy(providerType, providerConfig, healthResult.errorMessage, healthResult.errorStatusCode, true);
                         providerStatus.config.lastHealthCheckTime = new Date().toISOString();
                         if (healthResult.modelName) {
                             providerStatus.config.lastHealthCheckModel = healthResult.modelName;
@@ -1322,7 +1337,9 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
                         });
                     }
                 } catch (error) {
-                    providerPoolManager.markProviderUnhealthy(providerType, providerConfig, error.message);
+                    const errorStatusCode = error?.status || error?.code || error?.response?.status || null;
+                    // 健康检测接口强制标记为不健康
+                    providerPoolManager.markProviderUnhealthy(providerType, providerConfig, error.message, errorStatusCode, true);
                     results.push({
                         uuid: providerConfig.uuid,
                         success: false,

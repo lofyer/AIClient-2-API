@@ -1567,10 +1567,7 @@ async function resetAllProvidersHealth(providerType) {
         if (response.success) {
             showToast(`成功重置 ${response.resetCount} 个节点的健康状态`, 'success');
             
-            // 重新加载配置
-            await window.apiClient.post('/reload-config');
-            
-            // 刷新提供商配置显示
+            // 刷新提供商配置显示（不需要reload-config，直接从providerStatus获取最新状态）
             await refreshProviderConfig(providerType);
         } else {
             showToast('重置健康状态失败', 'error');
@@ -1610,10 +1607,7 @@ async function performHealthCheck(providerType) {
             
             showToast(message, failCount > 0 ? 'warning' : 'success');
             
-            // 重新加载配置
-            await window.apiClient.post('/reload-config');
-            
-            // 刷新提供商配置显示
+            // 刷新提供商配置显示（不需要reload-config，直接从providerStatus获取最新状态）
             await refreshProviderConfig(providerType);
         } else {
             showToast('健康检测失败', 'error');

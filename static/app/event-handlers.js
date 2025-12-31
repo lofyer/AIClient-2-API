@@ -9,6 +9,9 @@ import { t } from './i18n.js';
  * 初始化所有事件监听器
  */
 function initEventListeners() {
+    // 全局设置Tab切换
+    initConfigTabs();
+
     // 刷新按钮
     if (elements.refreshBtn) {
         elements.refreshBtn.addEventListener('click', handleRefresh);
@@ -353,8 +356,36 @@ export function setReloadConfig(configReloader) {
     reloadConfig = configReloader;
 }
 
+/**
+ * 初始化全局设置Tab切换功能
+ */
+function initConfigTabs() {
+    const configTabs = document.querySelectorAll('.config-tab');
+    const configTabContents = document.querySelectorAll('.config-tab-content');
+    
+    if (configTabs.length === 0) return;
+    
+    configTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.dataset.tab;
+            
+            // 移除所有tab的active状态
+            configTabs.forEach(t => t.classList.remove('active'));
+            configTabContents.forEach(c => c.classList.remove('active'));
+            
+            // 添加当前tab的active状态
+            tab.classList.add('active');
+            const targetContent = document.querySelector(`.config-tab-content[data-tab-content="${targetTab}"]`);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+        });
+    });
+}
+
 export {
     initEventListeners,
+    initConfigTabs,
     handleProviderChange,
     handleGeminiCredsTypeChange,
     handleKiroCredsTypeChange,
