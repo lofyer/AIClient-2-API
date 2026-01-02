@@ -1,7 +1,30 @@
 import * as fs from 'fs'; // Import fs module
+import * as crypto from 'crypto';
+import { execSync } from 'child_process';
+import * as path from 'path';
 import { getServiceAdapter } from './adapter.js';
 import { MODEL_PROVIDER } from './common.js';
 import axios from 'axios';
+
+/**
+ * 使用 machine-id-tool 生成 machineId
+ * 格式: UUID (如 "0622edf0-8f06-42dd-846b-586108a26b3c")
+ */
+function generateMachineId() {
+    try {
+        // 获取当前文件所在目录，然后定位到 third_tools
+        const toolPath = path.join(process.cwd(), 'third_tools', 'machine-id-tool-aarch64-apple-darwin');
+        const result = execSync(`"${toolPath}" generate`, { encoding: 'utf8', timeout: 5000 });
+        const parsed = JSON.parse(result.trim());
+        if (parsed.machine_id) {
+            return parsed.machine_id;
+        }
+    } catch (error) {
+        console.warn('[PoolManager] Failed to use machine-id-tool, falling back to random UUID:', error.message);
+    }
+    // 回退方案：生成随机 UUID
+    return crypto.randomUUID();
+}
 
 /**
  * Manages a pool of API service providers, handling their health and selection.
@@ -69,6 +92,7 @@ export class ProviderPoolManager {
      * Initially, all providers are considered healthy and have zero usage.
      */
     initializeProviderStatus() {
+        let needsSave = false;
         for (const providerType in this.providerPools) {
             this.providerStatus[providerType] = [];
             this.roundRobinIndex[providerType] = 0; // Initialize round-robin index for each type
@@ -90,6 +114,13 @@ export class ProviderPoolManager {
                 providerConfig.lastHealthCheckModel = providerConfig.lastHealthCheckModel || null;
                 providerConfig.lastErrorMessage = providerConfig.lastErrorMessage || null;
 
+                // 为 Kiro 节点生成 machineId（如果不存在）
+                if (providerType.includes('kiro') && !providerConfig.machineId) {
+                    providerConfig.machineId = generateMachineId();
+                    needsSave = true;
+                    this._log('info', `Generated machineId for node: ${providerConfig.customName || providerConfig.uuid}`);
+                }
+
                 this.providerStatus[providerType].push({
                     config: providerConfig,
                     uuid: providerConfig.uuid, // Still keep uuid at the top level for easy access
@@ -97,6 +128,11 @@ export class ProviderPoolManager {
             });
         }
         this._log('info', `Initialized provider statuses: ok (maxErrorCount: ${this.maxErrorCount})`);
+        
+        // 如果有新生成的 machineId，保存到文件
+        if (needsSave) {
+            this._flushPendingSaves();
+        }
     }
 
     /**

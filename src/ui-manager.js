@@ -2424,6 +2424,7 @@ async function getProviderTypeUsage(providerType, currentConfig, providerPoolMan
             uuid: provider.uuid || 'unknown',
             name: getProviderDisplayName(provider, providerType),
             customName: provider.customName || null,
+            machineId: provider.machineId || null,
             credFilePath: getProviderCredFilePath(provider, providerType),
             authProvider: getProviderAuthProvider(provider, providerType),
             isHealthy: provider.isHealthy !== false,

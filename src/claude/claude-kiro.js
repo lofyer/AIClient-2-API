@@ -55,18 +55,6 @@ const KIRO_AUTH_TOKEN_FILE = "kiro-auth-token.json";
  */
 
 /**
- * 根据当前配置生成唯一的机器码（Machine ID）
- * 确保每个配置对应一个唯一且不变的 ID
- * @param {Object} credentials - 当前凭证信息
- * @returns {string} SHA256 格式的机器码
- */
-function generateMachineIdFromConfig(credentials) {
-    // 优先级：节点UUID > profileArn > clientId > fallback
-    const uniqueKey = credentials.uuid || credentials.profileArn || credentials.clientId || "KIRO_DEFAULT_MACHINE";
-    return crypto.createHash('sha256').update(uniqueKey).digest('hex');
-}
-
-/**
  * 实时获取系统配置信息，用于生成 User-Agent
  * @returns {Object} 包含 osName, nodeVersion 等信息
  */
@@ -328,12 +316,11 @@ export class KiroApiService {
         if (this.isInitialized) return;
         console.log('[Kiro] Initializing Kiro API Service...');
         await this.initializeAuth();
-        // 根据当前加载的凭证生成唯一的 Machine ID
-        const machineId = generateMachineIdFromConfig({
-            uuid: this.uuid,
-            profileArn: this.profileArn,
-            clientId: this.clientId
-        });
+        // 使用配置中的 machineId（由 provider-pool-manager 生成）
+        const machineId = this.config.machineId;
+        if (!machineId) {
+            console.warn('[Kiro] machineId not found in config');
+        }
         const kiroVersion = KIRO_CONSTANTS.KIRO_VERSION;
         const { osName, nodeVersion } = getSystemRuntimeInfo();
 
@@ -1150,7 +1137,8 @@ async initializeAuth(forceRefresh = false) {
         }
         
         const finalModel = MODEL_MAPPING[model] ? model : this.modelName;
-        console.log(`[Kiro] Calling generateContent with model: ${finalModel}, proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
+        const machineId = this.config.machineId || 'unknown';
+        console.log(`[Kiro] Calling generateContent with model: ${finalModel}, machineId: ${machineId}, proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
         
         // Estimate input tokens before making the API call
         const inputTokens = this.estimateInputTokens(requestBody);
@@ -1435,7 +1423,8 @@ async initializeAuth(forceRefresh = false) {
         }
         
         const finalModel = MODEL_MAPPING[model] ? model : this.modelName;
-        console.log(`[Kiro] Calling generateContentStream with model: ${finalModel} (real streaming), proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
+        const machineId = this.config.machineId || 'unknown';
+        console.log(`[Kiro] Calling generateContentStream with model: ${finalModel}, machineId: ${machineId}, proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
         
         const inputTokens = this.estimateInputTokens(requestBody);
         const messageId = `${uuidv4()}`;
@@ -1954,12 +1943,8 @@ async initializeAuth(forceRefresh = false) {
         }
         const fullUrl = `${usageLimitsUrl}?${params.toString()}`;
 
-        // 构建请求头
-        const machineId = generateMachineIdFromConfig({
-            uuid: this.uuid,
-            profileArn: this.profileArn,
-            clientId: this.clientId
-        });
+        // 使用配置中的 machineId
+        const machineId = this.config.machineId || '';
         const kiroVersion = KIRO_CONSTANTS.KIRO_VERSION;
         const { osName, nodeVersion } = getSystemRuntimeInfo();
 
