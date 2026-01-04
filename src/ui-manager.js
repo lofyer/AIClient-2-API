@@ -1079,6 +1079,28 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
             writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf8');
             console.log(`[UI API] Deleted provider ${providerUuid} from ${providerType}`);
 
+            // 删除对应的 OAuth 配置文件目录
+            const oauthCredsPathKeys = [
+                'KIRO_OAUTH_CREDS_FILE_PATH',
+                'GEMINI_OAUTH_CREDS_FILE_PATH',
+                'QWEN_OAUTH_CREDS_FILE_PATH'
+            ];
+            for (const key of oauthCredsPathKeys) {
+                if (deletedProvider[key]) {
+                    try {
+                        const credsFilePath = deletedProvider[key];
+                        const credsDir = path.dirname(path.join(process.cwd(), credsFilePath));
+                        if (existsSync(credsDir)) {
+                            await fs.rm(credsDir, { recursive: true, force: true });
+                            console.log(`[UI API] Deleted OAuth config directory: ${credsDir}`);
+                        }
+                    } catch (deleteError) {
+                        console.warn(`[UI API] Failed to delete OAuth config directory: ${deleteError.message}`);
+                    }
+                    break;
+                }
+            }
+
             // Update provider pool manager if available
             // 注意：直接更新 providerPools 引用，不调用 initializeProviderStatus 避免重新生成 UUID
             if (providerPoolManager) {
