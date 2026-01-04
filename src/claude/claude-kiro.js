@@ -565,6 +565,96 @@ async initializeAuth(forceRefresh = false) {
 }
 
     /**
+     * 清理不完整的工具调用
+     * 确保每个 tool_use 都有对应的 tool_result，否则 Kiro API 会返回 400 错误
+     * @param {Array} messages - 消息数组
+     * @returns {Array} 清理后的消息数组
+     */
+    cleanIncompleteToolCalls(messages) {
+        if (!messages || messages.length === 0) return messages;
+        
+        // 收集所有 tool_use 的 ID
+        const toolUseIds = new Set();
+        // 收集所有 tool_result 对应的 tool_use_id
+        const toolResultIds = new Set();
+        
+        for (const msg of messages) {
+            if (!msg.content || !Array.isArray(msg.content)) continue;
+            
+            for (const part of msg.content) {
+                if (part.type === 'tool_use' && part.id) {
+                    toolUseIds.add(part.id);
+                } else if (part.type === 'tool_result' && part.tool_use_id) {
+                    toolResultIds.add(part.tool_use_id);
+                }
+            }
+        }
+        
+        // 找出没有对应 tool_result 的 tool_use ID
+        const orphanedToolUseIds = new Set();
+        for (const id of toolUseIds) {
+            if (!toolResultIds.has(id)) {
+                orphanedToolUseIds.add(id);
+            }
+        }
+        
+        // 找出没有对应 tool_use 的 tool_result ID
+        const orphanedToolResultIds = new Set();
+        for (const id of toolResultIds) {
+            if (!toolUseIds.has(id)) {
+                orphanedToolResultIds.add(id);
+            }
+        }
+        
+        if (orphanedToolUseIds.size === 0 && orphanedToolResultIds.size === 0) {
+            return messages; // 没有孤立的工具调用，直接返回
+        }
+        
+        console.log(`[Kiro] Cleaning incomplete tool calls: ${orphanedToolUseIds.size} orphaned tool_use, ${orphanedToolResultIds.size} orphaned tool_result`);
+        
+        // 过滤掉孤立的工具调用
+        const cleanedMessages = [];
+        for (const msg of messages) {
+            if (!msg.content || !Array.isArray(msg.content)) {
+                cleanedMessages.push(msg);
+                continue;
+            }
+            
+            const cleanedContent = msg.content.filter(part => {
+                if (part.type === 'tool_use' && orphanedToolUseIds.has(part.id)) {
+                    console.log(`[Kiro] Removing orphaned tool_use: ${part.name} (${part.id})`);
+                    return false;
+                }
+                if (part.type === 'tool_result' && orphanedToolResultIds.has(part.tool_use_id)) {
+                    console.log(`[Kiro] Removing orphaned tool_result for: ${part.tool_use_id}`);
+                    return false;
+                }
+                return true;
+            });
+            
+            // 如果消息内容被清空，检查是否需要保留
+            if (cleanedContent.length === 0) {
+                // 如果是 assistant 消息且内容被完全清空，添加一个占位文本
+                if (msg.role === 'assistant') {
+                    cleanedMessages.push({
+                        ...msg,
+                        content: [{ type: 'text', text: '(continued)' }]
+                    });
+                }
+                // user 消息如果被清空则跳过
+                continue;
+            }
+            
+            cleanedMessages.push({
+                ...msg,
+                content: cleanedContent
+            });
+        }
+        
+        return cleanedMessages;
+    }
+
+    /**
      * Extract text content from OpenAI message format
      */
     getContentText(message) {
@@ -594,7 +684,70 @@ async initializeAuth(forceRefresh = false) {
         const conversationId = uuidv4();
         
         let systemPrompt = this.getContentText(inSystemPrompt);
-        const processedMessages = messages;
+        let processedMessages = messages;
+        
+        // 上下文截断：限制请求体大小，避免 400 错误
+        // Kiro API 对请求体大小有硬性限制，需要按字节数截断而不是 token 数
+        const MAX_REQUEST_SIZE_KB = (this.config && this.config.KIRO_MAX_REQUEST_SIZE_KB) || 240; // 默认 240KB
+        const MAX_REQUEST_SIZE = MAX_REQUEST_SIZE_KB * 1024;
+        
+        // 估算每条消息的字节大小
+        const estimateMessageSize = (msg) => {
+            let size = 0;
+            if (Array.isArray(msg.content)) {
+                for (const part of msg.content) {
+                    if (part.type === 'text' && part.text) {
+                        size += part.text.length;
+                    } else if (part.type === 'image' && part.source?.data) {
+                        size += part.source.data.length; // base64 字符串长度
+                    } else if (part.type === 'tool_use' || part.type === 'tool_result') {
+                        size += JSON.stringify(part).length;
+                    }
+                }
+            } else if (typeof msg.content === 'string') {
+                size += msg.content.length;
+            }
+            return size;
+        };
+        
+        let totalSize = systemPrompt ? systemPrompt.length : 0;
+        console.log(`[Kiro] Max request size: ${MAX_REQUEST_SIZE_KB}KB, messages count: ${processedMessages.length}`);
+        
+        // 从后往前计算大小，保留最近的消息
+        const messagesToKeep = [];
+        for (let i = processedMessages.length - 1; i >= 0; i--) {
+            const msg = processedMessages[i];
+            const msgSize = estimateMessageSize(msg);
+            
+            if (totalSize + msgSize > MAX_REQUEST_SIZE && messagesToKeep.length > 0) {
+                console.log(`[Kiro] Size truncation: keeping ${messagesToKeep.length} messages, dropping ${i + 1} older messages (size would exceed ${MAX_REQUEST_SIZE_KB}KB)`);
+                break;
+            }
+            
+            totalSize += msgSize;
+            messagesToKeep.unshift(msg);
+        }
+        
+        console.log(`[Kiro] Total estimated size: ${Math.round(totalSize / 1024)}KB`);
+        
+        // 确保至少保留最后一条消息
+        if (messagesToKeep.length === 0 && processedMessages.length > 0) {
+            messagesToKeep.push(processedMessages[processedMessages.length - 1]);
+            console.log('[Kiro] Context truncation: keeping only the last message due to size limit');
+        }
+        
+        processedMessages = messagesToKeep;
+        
+        // 清理不完整的工具调用：确保每个 tool_use 都有对应的 tool_result
+        // Kiro API 要求工具调用必须完整，否则会返回 "Improperly formed request" 错误
+        processedMessages = this.cleanIncompleteToolCalls(processedMessages);
+        
+        // 确保第一条消息是 user 类型（Kiro API 要求）
+        // 如果截断后第一条是 assistant，需要移除它
+        while (processedMessages.length > 0 && processedMessages[0].role === 'assistant') {
+            console.log('[Kiro] Removing leading assistant message to ensure first message is user');
+            processedMessages.shift();
+        }
 
         if (processedMessages.length === 0) {
             throw new Error('No user messages found');
@@ -699,7 +852,7 @@ async initializeAuth(forceRefresh = false) {
                     modelId: codewhispererModel,
                     origin: KIRO_CONSTANTS.ORIGIN_AI_EDITOR
                 };
-                let images = [];
+                let imageCount = 0;
                 let toolResults = [];
                 
                 if (Array.isArray(message.content)) {
@@ -713,21 +866,22 @@ async initializeAuth(forceRefresh = false) {
                                 toolUseId: part.tool_use_id
                             });
                         } else if (part.type === 'image') {
-                            images.push({
-                                format: part.source.media_type.split('/')[1],
-                                source: {
-                                    bytes: part.source.data
-                                }
-                            });
+                            // 历史消息中的图片不保留 base64 数据，只记录数量
+                            // 避免请求体过大导致 400 错误
+                            imageCount++;
                         }
                     }
                 } else {
                     userInputMessage.content = this.getContentText(message);
                 }
                 
-                // 只添加非空字段，API 不接受空数组或空对象
-                if (images.length > 0) {
-                    userInputMessage.images = images;
+                // 如果历史消息中有图片，添加占位符说明
+                if (imageCount > 0) {
+                    const imagePlaceholder = `[此消息包含 ${imageCount} 张图片，已在历史记录中省略]`;
+                    userInputMessage.content = userInputMessage.content 
+                        ? `${userInputMessage.content}\n${imagePlaceholder}` 
+                        : imagePlaceholder;
+                    console.log(`[Kiro] Replaced ${imageCount} image(s) with placeholder in history message`);
                 }
                 if (toolResults.length > 0) {
                     // 去重 toolResults - Kiro API 不接受重复的 toolUseId
