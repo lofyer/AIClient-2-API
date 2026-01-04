@@ -414,7 +414,13 @@ function renderProviderList(providers) {
                             使用次数: ${provider.usageCount || 0} |
                             失败次数: ${provider.errorCount || 0} |
                             最后使用: ${lastUsed}
-                        </div>
+                        </div>${provider.machineId ? `
+                        <div class="provider-machine-meta">
+                            <span class="machine-id" title="${provider.machineId}">
+                                <i class="fas fa-fingerprint"></i>
+                                MachineID: ${provider.machineId}
+                            </span>
+                        </div>` : ''}
                         <div class="provider-health-meta">
                             <span class="health-check-time">
                                 <i class="fas fa-clock"></i>
