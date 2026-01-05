@@ -1497,15 +1497,17 @@ async initializeAuth(forceRefresh = false) {
             });
 
             stream = response.data;
-            let buffer = '';
+            let buffer = Buffer.alloc(0);  // 使用 Buffer 避免 UTF-8 多字节字符被截断
             let lastContentEvent = null;  // 用于检测连续重复的 content 事件
 
             for await (const chunk of stream) {
-                buffer += chunk.toString();
+                // Buffer 拼接，避免多字节字符被分割导致丢失
+                buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
                 
                 // 解析缓冲区中的事件
-                const { events, remaining } = this.parseAwsEventStreamBuffer(buffer);
-                buffer = remaining;
+                const bufferStr = buffer.toString('utf8');
+                const { events, remaining } = this.parseAwsEventStreamBuffer(bufferStr);
+                buffer = Buffer.from(remaining, 'utf8');  // 剩余部分转回 Buffer
                 
                 // yield 所有事件，但过滤连续完全相同的 content 事件（Kiro API 有时会重复发送）
                 for (const event of events) {
