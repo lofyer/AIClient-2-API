@@ -652,6 +652,7 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
             if (newConfig.PROVIDER_POOLS_FILE_PATH !== undefined) currentConfig.PROVIDER_POOLS_FILE_PATH = newConfig.PROVIDER_POOLS_FILE_PATH;
             if (newConfig.MAX_ERROR_COUNT !== undefined) currentConfig.MAX_ERROR_COUNT = newConfig.MAX_ERROR_COUNT;
             if (newConfig.USAGE_REFRESH_INTERVAL !== undefined) currentConfig.USAGE_REFRESH_INTERVAL = newConfig.USAGE_REFRESH_INTERVAL;
+            if (newConfig.KIRO_HEADER_VERSION !== undefined) currentConfig.KIRO_HEADER_VERSION = newConfig.KIRO_HEADER_VERSION;
             if (newConfig.GLOBAL_PROXY !== undefined) currentConfig.GLOBAL_PROXY = newConfig.GLOBAL_PROXY;
 
             // Handle system prompt update
@@ -719,6 +720,7 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
                     PROVIDER_POOLS_FILE_PATH: currentConfig.PROVIDER_POOLS_FILE_PATH,
                     MAX_ERROR_COUNT: currentConfig.MAX_ERROR_COUNT,
                     USAGE_REFRESH_INTERVAL: currentConfig.USAGE_REFRESH_INTERVAL,
+                    KIRO_HEADER_VERSION: currentConfig.KIRO_HEADER_VERSION,
                     GLOBAL_PROXY: currentConfig.GLOBAL_PROXY
                 };
 

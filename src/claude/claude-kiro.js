@@ -28,6 +28,32 @@ const KIRO_CONSTANTS = {
     ORIGIN_AI_EDITOR: 'AI_EDITOR',
 };
 
+// Kiro 版本配置映射
+const KIRO_VERSION_CONFIGS = {
+    '0.7.5': {
+        version: '0.7.5',
+        sdkVersion: '1.0.0',
+        apiName: 'codewhispererruntime',
+        apiVersion: '1.0.0'
+    },
+    '0.8.0': {
+        version: '0.8.0',
+        sdkVersion: '1.0.27',
+        apiName: 'codewhispererstreaming',
+        apiVersion: '1.0.27'
+    }
+};
+
+/**
+ * 获取 Kiro 版本配置
+ * @param {Object} globalConfig - 全局配置对象
+ * @returns {Object} 版本配置
+ */
+function getKiroVersionConfig(globalConfig) {
+    const headerVersion = globalConfig?.KIRO_HEADER_VERSION || '0.7.5';
+    return KIRO_VERSION_CONFIGS[headerVersion] || KIRO_VERSION_CONFIGS['0.7.5'];
+}
+
 // 从 provider-models.js 获取支持的模型列表
 const KIRO_MODELS = getProviderModels('claude-kiro-oauth');
 
@@ -321,7 +347,9 @@ export class KiroApiService {
         if (!machineId) {
             console.warn('[Kiro] machineId not found in config');
         }
-        const kiroVersion = KIRO_CONSTANTS.KIRO_VERSION;
+        const versionConfig = getKiroVersionConfig(this.globalConfig);
+        const kiroVersion = versionConfig.version;
+        console.log(`[Kiro] Using header version: ${kiroVersion}, SDK: ${versionConfig.sdkVersion}, API: ${versionConfig.apiName}#${versionConfig.apiVersion}`);
         const { osName, nodeVersion } = getSystemRuntimeInfo();
 
         // 配置 HTTP/HTTPS agent 限制连接池大小，避免资源泄漏
@@ -355,8 +383,8 @@ export class KiroApiService {
                 'Accept': KIRO_CONSTANTS.ACCEPT_JSON,
                 'amz-sdk-request': 'attempt=1; max=1',
                 'x-amzn-kiro-agent-mode': 'vibe',
-                'x-amz-user-agent': `aws-sdk-js/1.0.0 KiroIDE-${kiroVersion}-${machineId}`,
-                'user-agent': `aws-sdk-js/1.0.0 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererruntime#1.0.0 m/E KiroIDE-${kiroVersion}-${machineId}`,
+                'x-amz-user-agent': `aws-sdk-js/${versionConfig.sdkVersion} KiroIDE-${kiroVersion}-${machineId}`,
+                'user-agent': `aws-sdk-js/${versionConfig.sdkVersion} ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/${versionConfig.apiName}#${versionConfig.apiVersion} m/E KiroIDE-${kiroVersion}-${machineId}`,
                 'Connection': 'close'
             },
         };
@@ -2099,13 +2127,14 @@ async initializeAuth(forceRefresh = false) {
 
         // 使用配置中的 machineId
         const machineId = this.config.machineId || '';
-        const kiroVersion = KIRO_CONSTANTS.KIRO_VERSION;
+        const versionConfig = getKiroVersionConfig(this.globalConfig);
+        const kiroVersion = versionConfig.version;
         const { osName, nodeVersion } = getSystemRuntimeInfo();
 
         const headers = {
             'Authorization': `Bearer ${this.accessToken}`,
-            'x-amz-user-agent': `aws-sdk-js/1.0.0 KiroIDE-${kiroVersion}-${machineId}`,
-            'user-agent': `aws-sdk-js/1.0.0 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererruntime#1.0.0 m/E KiroIDE-${kiroVersion}-${machineId}`,
+            'x-amz-user-agent': `aws-sdk-js/${versionConfig.sdkVersion} KiroIDE-${kiroVersion}-${machineId}`,
+            'user-agent': `aws-sdk-js/${versionConfig.sdkVersion} ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/${versionConfig.apiName}#${versionConfig.apiVersion} m/E KiroIDE-${kiroVersion}-${machineId}`,
             'amz-sdk-invocation-id': uuidv4(),
             'amz-sdk-request': 'attempt=1; max=1',
             'Connection': 'close'

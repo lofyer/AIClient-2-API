@@ -820,6 +820,19 @@
                                     <small class="form-text">设置为 0 则禁用自动刷新，默认 60 分钟</small>
                                 </div>
                                 
+                                <!-- Kiro 配置 -->
+                                <div class="kiro-config-section">
+                                    <h4><i class="fas fa-id-card"></i> Kiro 配置</h4>
+                                    <div class="form-group">
+                                        <label for="kiroHeaderVersion">Kiro 认证头版本</label>
+                                        <select id="kiroHeaderVersion" class="form-control">
+                                            <option value="0.7.5" selected>0.7.5 (默认)</option>
+                                            <option value="0.8.0">0.8.0</option>
+                                        </select>
+                                        <small class="form-text">选择 Kiro 客户端版本以匹配请求头，建议与实际 Kiro 客户端版本保持一致</small>
+                                    </div>
+                                </div>
+                                
                                 <!-- 代理配置 -->
                                 <div class="proxy-config-section">
                                     <h4><i class="fas fa-globe"></i> 代理配置</h4>

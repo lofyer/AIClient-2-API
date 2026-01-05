@@ -108,6 +108,10 @@ async function loadConfiguration() {
         const usageRefreshIntervalEl = document.getElementById('usageRefreshInterval');
         if (usageRefreshIntervalEl) usageRefreshIntervalEl.value = data.USAGE_REFRESH_INTERVAL ?? 60;
 
+        // Kiro 认证头版本
+        const kiroHeaderVersionEl = document.getElementById('kiroHeaderVersion');
+        if (kiroHeaderVersionEl) kiroHeaderVersionEl.value = data.KIRO_HEADER_VERSION || '0.7.5';
+
         // 代理配置
         const proxyConfig = data.GLOBAL_PROXY || {};
         const proxyEnabledEl = document.getElementById('proxyEnabled');
@@ -290,6 +294,7 @@ async function saveConfiguration() {
     config.PROVIDER_POOLS_FILE_PATH = document.getElementById('providerPoolsFilePath')?.value || '';
     config.MAX_ERROR_COUNT = parseInt(document.getElementById('maxErrorCount')?.value || 3);
     config.USAGE_REFRESH_INTERVAL = parseInt(document.getElementById('usageRefreshInterval')?.value ?? 60);
+    config.KIRO_HEADER_VERSION = document.getElementById('kiroHeaderVersion')?.value || '0.7.5';
 
     // 代理配置
     const proxyPortValue = document.getElementById('proxyPort')?.value;
