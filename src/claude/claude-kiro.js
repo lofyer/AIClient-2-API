@@ -12,6 +12,7 @@ import { countTokens } from '@anthropic-ai/tokenizer';
 import { json } from 'stream/consumers';
 import { EventStreamCodec } from '@aws-sdk/eventstream-codec';
 import { toUtf8, fromUtf8 } from '@aws-sdk/util-utf8-node';
+import { CLAUDE_DEFAULT_MAX_TOKENS } from '../converters/utils.js';
 
 const KIRO_CONSTANTS = {
     REFRESH_URL: 'https://prod.{{region}}.auth.desktop.kiro.dev/refreshToken',
@@ -1308,9 +1309,16 @@ async initializeAuth(forceRefresh = false) {
             fullResponseText = fullResponseText.replace(/\s+/g, ' ').trim();
         }
         
+        // 5. 从原始响应中提取 contextUsagePercentage
+        let contextUsagePercentage = null;
+        const contextUsageMatch = rawResponseText.match(/"contextUsagePercentage":\s*([\d.]+)/);
+        if (contextUsageMatch) {
+            contextUsagePercentage = parseFloat(contextUsageMatch[1]);
+        }
+        
         //console.log(`[Kiro] Final response text after tool call cleanup: ${fullResponseText}`);
         //console.log(`[Kiro] Final tool calls after deduplication: ${JSON.stringify(uniqueToolCalls)}`);
-        return { responseText: fullResponseText, toolCalls: uniqueToolCalls };
+        return { responseText: fullResponseText, toolCalls: uniqueToolCalls, contextUsagePercentage };
     }
 
     async generateContent(model, requestBody) {
@@ -1326,13 +1334,22 @@ async initializeAuth(forceRefresh = false) {
         const machineId = this.config.machineId || 'unknown';
         console.log(`[Kiro] Calling generateContent with model: ${finalModel}, machineId: ${machineId}, proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
         
-        // Estimate input tokens before making the API call
-        const inputTokens = this.estimateInputTokens(requestBody);
-        
         const response = await this.callApi('', finalModel, requestBody);
 
         try {
-            const { responseText, toolCalls } = this._processApiResponse(response);
+            const { responseText, toolCalls, contextUsagePercentage } = this._processApiResponse(response);
+            
+            // 优先使用 API 返回的 contextUsagePercentage 计算 token，否则使用估算值
+            let inputTokens = 0;
+            if (contextUsagePercentage) {
+                inputTokens = this.calculateInputTokensFromPercentage(contextUsagePercentage);
+            } else {
+                inputTokens = this.estimateInputTokens(requestBody);
+            }
+            
+            const outputTokens = this.countTextTokens(responseText);
+            console.log(`[Kiro] Request completed: input_tokens=${inputTokens}, output_tokens=${outputTokens}, context_usage=${contextUsagePercentage ? contextUsagePercentage.toFixed(2) + '%' : 'N/A'}`);
+            
             return this.buildClaudeResponse(responseText, false, 'assistant', model, toolCalls, inputTokens);
         } catch (error) {
             console.error('[Kiro] Error in generateContent:', error);
@@ -1407,6 +1424,15 @@ async initializeAuth(forceRefresh = false) {
                             }
                         });
                     }
+                    // 处理 context usage percentage 事件
+                    else if (payload.contextUsagePercentage !== undefined) {
+                        events.push({
+                            type: 'contextUsage',
+                            data: {
+                                percentage: payload.contextUsagePercentage
+                            }
+                        });
+                    }
                 }
                 
                 offset += totalLength;
@@ -1467,6 +1493,8 @@ async initializeAuth(forceRefresh = false) {
                         yield { type: 'toolUseInput', input: event.data.input };
                     } else if (event.type === 'toolUseStop') {
                         yield { type: 'toolUseStop', stop: event.data.stop };
+                    } else if (event.type === 'contextUsage') {
+                        yield { type: 'contextUsage', percentage: event.data.percentage };
                     }
                 }
             }
@@ -1552,11 +1580,12 @@ async initializeAuth(forceRefresh = false) {
         const machineId = this.config.machineId || 'unknown';
         console.log(`[Kiro] Calling generateContentStream with model: ${finalModel}, machineId: ${machineId}, proxy: ${this.useProxy ? 'enabled' : 'disabled'}`);
         
-        const inputTokens = this.estimateInputTokens(requestBody);
+        // 预先估算 inputTokens 作为保底值，如果收到 contextUsagePercentage 会被覆盖
+        let inputTokens = this.estimateInputTokens(requestBody);
         const messageId = `${uuidv4()}`;
         
         try {
-            // 1. 先发送 message_start 事件
+            // 1. 立即发送 message_start，不等待 contextUsagePercentage
             yield {
                 type: "message_start",
                 message: {
@@ -1564,7 +1593,7 @@ async initializeAuth(forceRefresh = false) {
                     type: "message",
                     role: "assistant",
                     model: model,
-                    usage: { input_tokens: inputTokens, output_tokens: 0 },
+                    usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
                     content: []
                 }
             };
@@ -1580,10 +1609,15 @@ async initializeAuth(forceRefresh = false) {
             let outputTokens = 0;
             const toolCalls = [];
             let currentToolCall = null;  // 用于累积结构化工具调用
+            let contextUsagePercentage = null;  // 记录 context usage 百分比
 
             // 3. 流式接收并发送每个 content_block_delta
             for await (const event of this.streamApiReal('', finalModel, requestBody)) {
-                if (event.type === 'content' && event.content) {
+                if (event.type === 'contextUsage' && event.percentage) {
+                    // 收到 contextUsagePercentage 时更新 inputTokens，用于最终的 message_delta
+                    contextUsagePercentage = event.percentage;
+                    inputTokens = this.calculateInputTokensFromPercentage(event.percentage);
+                } else if (event.type === 'content' && event.content) {
                     totalContent += event.content;
                     // 不再每个 chunk 都计算 token，改为最后统一计算，避免阻塞事件循环
                     
@@ -1707,10 +1741,20 @@ async initializeAuth(forceRefresh = false) {
                 outputTokens += this.countTextTokens(JSON.stringify(tc.input || {}));
             }
             
+            console.log(`[Kiro] Stream completed: input_tokens=${inputTokens}, output_tokens=${outputTokens}, context_usage=${contextUsagePercentage ? contextUsagePercentage.toFixed(2) + '%' : 'N/A'}`);
+            
             yield {
                 type: "message_delta",
-                delta: { stop_reason: toolCalls.length > 0 ? "tool_use" : "end_turn" },
-                usage: { output_tokens: outputTokens }
+                delta: { 
+                    stop_reason: toolCalls.length > 0 ? "tool_use" : "end_turn",
+                    stop_sequence: null
+                },
+                usage: { 
+                    input_tokens: inputTokens,
+                    output_tokens: outputTokens,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0
+                }
             };
 
             // 7. 发送 message_stop 事件
@@ -1737,7 +1781,21 @@ async initializeAuth(forceRefresh = false) {
     }
 
     /**
+     * Convert context usage percentage to actual input tokens
+     * @param {number} percentage - Context usage percentage (0-100)
+     * @returns {number} Actual input tokens
+     */
+    calculateInputTokensFromPercentage(percentage) {
+        if (!percentage || percentage <= 0) {
+            return 0;
+        }
+        const contextWindow = CLAUDE_DEFAULT_MAX_TOKENS;
+        return Math.round((percentage / 100) * contextWindow);
+    }
+
+    /**
      * Calculate input tokens from request body using Claude's official tokenizer
+     * Used as fallback when contextUsagePercentage is not available from API
      */
     estimateInputTokens(requestBody) {
         let totalTokens = 0;
