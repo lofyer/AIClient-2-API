@@ -832,27 +832,13 @@ async saveCredentialsToFile(filePath, newData) {
 
         const codewhispererModel = MODEL_MAPPING[model] || MODEL_MAPPING[this.modelName];
         
-        // 动态压缩 tools（保留全部工具，但过滤掉 web_search/websearch）
+        // 动态压缩 tools（保留全部工具）
         let toolsContext = {};
         if (tools && Array.isArray(tools) && tools.length > 0) {
-            // 过滤掉 web_search 或 websearch 工具（忽略大小写）
-            const filteredTools = tools.filter(tool => {
-                const name = (tool.name || '').toLowerCase();
-                const shouldIgnore = name === 'web_search' || name === 'websearch';
-                if (shouldIgnore) {
-                    logger.info(`[Kiro] Ignoring tool: ${tool.name}`);
-                }
-                return !shouldIgnore;
-            });
-            
-            if (filteredTools.length === 0) {
-                // 所有工具都被过滤掉了，不添加 tools 上下文
-                logger.info('[Kiro] All tools were filtered out');
-            } else {
             const MAX_DESCRIPTION_LENGTH = 9216;
 
             let truncatedCount = 0;
-            const kiroTools = filteredTools.map(tool => {
+            const kiroTools = tools.map(tool => {
                 let desc = tool.description || "";
                 const originalLength = desc.length;
                 
@@ -878,7 +864,6 @@ async saveCredentialsToFile(filePath, newData) {
             }
 
             toolsContext = { tools: kiroTools };
-            }
         }
 
         const history = [];
