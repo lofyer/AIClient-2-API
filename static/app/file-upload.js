@@ -70,17 +70,28 @@ class FileUploadHandler {
      * @param {string} providerType - 提供商类型
      */
     async handleFileUpload(button, targetInputId, providerType) {
+        // Kiro 提供商支持多文件上传（用于 IdC 凭证合并）
+        const isKiro = providerType === 'claude-kiro-oauth' || targetInputId.includes('KIRO');
+        console.log('[FileUpload] providerType:', providerType, 'targetInputId:', targetInputId, 'isKiro:', isKiro);
+        
         // 创建隐藏的文件输入元素
-        const fileInput = this.createFileInput();
+        const fileInput = this.createFileInput(isKiro);
         
         // 设置文件选择回调
         fileInput.onchange = async (event) => {
-            const file = event.target.files[0];
+            const files = event.target.files;
             
-            if (file) {
+            if (files && files.length > 0) {
                 // 只有文件被实际选择后才显示加载状态并上传
                 this.setButtonLoading(button, true);
-                await this.uploadFile(file, targetInputId, button, providerType);
+                
+                if (files.length === 1) {
+                    // 单文件上传
+                    await this.uploadFile(files[0], targetInputId, button, providerType);
+                } else {
+                    // 多文件上传（合并到同一目录）
+                    await this.uploadMultipleFiles(files, targetInputId, button, providerType);
+                }
             }
             
             // 清理临时文件输入元素
@@ -93,12 +104,16 @@ class FileUploadHandler {
 
     /**
      * 创建文件输入元素
+     * @param {boolean} multiple - 是否支持多文件选择
      * @returns {HTMLInputElement} - 文件输入元素
      */
-    createFileInput() {
+    createFileInput(multiple = false) {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = '.json,.txt,.key,.pem,.p12,.pfx';
+        if (multiple) {
+            fileInput.multiple = true;
+        }
         fileInput.style.display = 'none';
         document.body.appendChild(fileInput);
         return fileInput;
@@ -145,6 +160,56 @@ class FileUploadHandler {
 
         } catch (error) {
             console.error('文件上传错误:', error);
+            showToast(t('common.error'), t('common.uploadFailed') + ': ' + error.message, 'error');
+        } finally {
+            this.setButtonLoading(button, false);
+        }
+    }
+
+    /**
+     * 上传多个文件到服务器（合并到同一目录）
+     * @param {FileList} files - 要上传的文件列表
+     * @param {string} targetInputId - 目标输入框ID
+     * @param {HTMLElement} button - 上传按钮
+     * @param {string} providerType - 提供商类型
+     */
+    async uploadMultipleFiles(files, targetInputId, button, providerType) {
+        try {
+            // 验证所有文件
+            for (const file of files) {
+                if (!this.validateFileType(file)) {
+                    showToast(t('common.error'), t('common.fileType') + ': ' + file.name, 'error');
+                    this.setButtonLoading(button, false);
+                    return;
+                }
+                if (file.size > 5 * 1024 * 1024) {
+                    showToast(t('common.error'), t('common.fileSize') + ': ' + file.name, 'error');
+                    this.setButtonLoading(button, false);
+                    return;
+                }
+            }
+
+            // 使用传入的 providerType 或回退到 currentProvider
+            const provider = providerType ? this.getProviderKey(providerType) : this.currentProvider;
+
+            // 创建 FormData，添加所有文件
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append('files', file);
+            }
+            formData.append('provider', provider);
+            formData.append('targetInputId', targetInputId);
+            formData.append('multiFile', 'true');
+
+            // 使用封装接口发送上传请求
+            const result = await window.apiClient.upload('/upload-oauth-credentials', formData);
+            
+            // 成功上传，设置文件路径到输入框（使用主文件路径）
+            this.setFilePathToInput(targetInputId, result.filePath);
+            showToast(t('common.success'), t('common.uploadSuccess') + ` (${files.length} files)`, 'success');
+
+        } catch (error) {
+            console.error('多文件上传错误:', error);
             showToast(t('common.error'), t('common.uploadFailed') + ': ' + error.message, 'error');
         } finally {
             this.setButtonLoading(button, false);
