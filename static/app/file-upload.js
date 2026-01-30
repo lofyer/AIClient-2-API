@@ -249,20 +249,23 @@ class FileUploadHandler {
      * @param {string} filePath - 文件路径
      */
     setFilePathToInput(inputId, filePath) {
-        // console.log('设置文件路径到输入框:', inputId, filePath);
+        console.log('[FileUpload] 设置文件路径到输入框:', inputId, filePath);
         let input = document.getElementById(inputId);
         if (input) {
-            // console.log('输入框元素存在，设置文件路径:', filePath);
+            console.log('[FileUpload] 输入框元素存在，设置文件路径:', filePath);
             input.value = filePath;
             // 同时更新data-config-value属性（用于编辑模式）
             if (input.hasAttribute('data-config-value')) {
                 input.setAttribute('data-config-value', filePath);
-                console.log('更新data-config-value属性:', filePath);
+                console.log('[FileUpload] 更新data-config-value属性:', filePath);
             }
             // 触发输入事件，通知其他监听器
             input.dispatchEvent(new Event('input', { bubbles: true }));
         } else {
-            console.error('无法找到输入框:', inputId);
+            console.error('[FileUpload] 无法找到输入框:', inputId, '尝试查找所有可能的输入框...');
+            // 尝试查找所有文本输入框
+            const allInputs = document.querySelectorAll('input[type="text"]');
+            console.log('[FileUpload] 页面上所有文本输入框:', Array.from(allInputs).map(i => i.id));
         }
     }
 }
