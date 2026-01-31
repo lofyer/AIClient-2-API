@@ -12,6 +12,8 @@ import { countTokens } from '@anthropic-ai/tokenizer';
 import { configureAxiosProxy } from '../../utils/proxy-utils.js';
 import { isRetryableNetworkError, MODEL_PROVIDER, formatExpiryLog } from '../../utils/common.js';
 import { getProviderPoolManager } from '../../services/service-manager.js';
+import { EventStreamCodec } from '@aws-sdk/eventstream-codec';
+import { toUtf8, fromUtf8 } from '@aws-sdk/util-utf8-node';
 
 const KIRO_THINKING = {
     MAX_BUDGET_TOKENS: 24576,
@@ -1779,147 +1781,94 @@ async saveCredentialsToFile(filePath, newData) {
 
     /**
      * 解析 AWS Event Stream 格式，提取所有完整的 JSON 事件
+     * 使用 AWS SDK EventStreamCodec 进行二进制解析
      * 返回 { events: 解析出的事件数组, remaining: 未处理完的缓冲区 }
      */
     parseAwsEventStreamBuffer(buffer) {
         const events = [];
-        let remaining = buffer;
-        let searchStart = 0;
+        const uint8Buffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+        let offset = 0;
         
-        while (true) {
-            // 查找真正的 JSON payload 起始位置
-            // AWS Event Stream 包含二进制头部，我们只搜索有效的 JSON 模式
-            // Kiro 返回格式: {"content":"..."} 或 {"name":"xxx","toolUseId":"xxx",...} 或 {"followupPrompt":"..."}
+        // 创建 codec 实例
+        const codec = new EventStreamCodec(toUtf8, fromUtf8);
+        
+        while (offset < uint8Buffer.length) {
+            // AWS Event Stream 消息格式：前4字节是消息总长度（大端序）
+            if (offset + 4 > uint8Buffer.length) break;
             
-            // 搜索所有可能的 JSON payload 开头模式
-            // Kiro 返回的 toolUse 可能分多个事件：
-            // 1. {"name":"xxx","toolUseId":"xxx"} - 开始
-            // 2. {"input":"..."} - input 数据（可能多次）
-            // 3. {"stop":true} - 结束
-            // 4. {"contextUsagePercentage":...} - 上下文使用百分比（最后一条消息）
-            const contentStart = remaining.indexOf('{"content":', searchStart);
-            const nameStart = remaining.indexOf('{"name":', searchStart);
-            const followupStart = remaining.indexOf('{"followupPrompt":', searchStart);
-            const inputStart = remaining.indexOf('{"input":', searchStart);
-            const stopStart = remaining.indexOf('{"stop":', searchStart);
-            const contextUsageStart = remaining.indexOf('{"contextUsagePercentage":', searchStart);
+            const totalLength = uint8Buffer.readUInt32BE(offset);
             
-            // 找到最早出现的有效 JSON 模式
-            const candidates = [contentStart, nameStart, followupStart, inputStart, stopStart, contextUsageStart].filter(pos => pos >= 0);
-            if (candidates.length === 0) break;
+            // 检查是否有完整的消息
+            if (totalLength < 16 || offset + totalLength > uint8Buffer.length) break;
             
-            const jsonStart = Math.min(...candidates);
-            if (jsonStart < 0) break;
-            
-            // 正确处理嵌套的 {} - 使用括号计数法
-            let braceCount = 0;
-            let jsonEnd = -1;
-            let inString = false;
-            let escapeNext = false;
-            
-            for (let i = jsonStart; i < remaining.length; i++) {
-                const char = remaining[i];
+            try {
+                // 提取单个消息的字节
+                const messageBytes = uint8Buffer.slice(offset, offset + totalLength);
+                const decoded = codec.decode(messageBytes);
                 
-                if (escapeNext) {
-                    escapeNext = false;
-                    continue;
-                }
+                // 从 headers 获取事件类型
+                const eventType = decoded.headers[':event-type']?.value;
                 
-                if (char === '\\') {
-                    escapeNext = true;
-                    continue;
-                }
-                
-                if (char === '"') {
-                    inString = !inString;
-                    continue;
-                }
-                
-                if (!inString) {
-                    if (char === '{') {
-                        braceCount++;
-                    } else if (char === '}') {
-                        braceCount--;
-                        if (braceCount === 0) {
-                            jsonEnd = i;
-                            break;
-                        }
+                // 解析 body
+                const bodyStr = new TextDecoder().decode(decoded.body);
+                if (bodyStr) {
+                    const parsed = JSON.parse(bodyStr);
+                    
+                    // 处理 content 事件
+                    if (parsed.content !== undefined && !parsed.followupPrompt) {
+                        events.push({ type: 'content', data: parsed.content });
+                    }
+                    // 处理结构化工具调用事件 - 开始事件（包含 name 和 toolUseId）
+                    else if (parsed.name && parsed.toolUseId) {
+                        events.push({ 
+                            type: 'toolUse', 
+                            data: {
+                                name: parsed.name,
+                                toolUseId: parsed.toolUseId,
+                                input: parsed.input || '',
+                                stop: parsed.stop || false
+                            }
+                        });
+                    }
+                    // 处理工具调用的 input 续传事件（只有 input 字段）
+                    else if (parsed.input !== undefined && !parsed.name) {
+                        events.push({
+                            type: 'toolUseInput',
+                            data: {
+                                input: parsed.input
+                            }
+                        });
+                    }
+                    // 处理工具调用的结束事件（只有 stop 字段，且不包含 contextUsagePercentage）
+                    else if (parsed.stop !== undefined && parsed.contextUsagePercentage === undefined) {
+                        events.push({
+                            type: 'toolUseStop',
+                            data: {
+                                stop: parsed.stop
+                            }
+                        });
+                    }
+                    // 处理上下文使用百分比事件（最后一条消息）
+                    else if (parsed.contextUsagePercentage !== undefined) {
+                        events.push({
+                            type: 'contextUsage',
+                            data: {
+                                contextUsagePercentage: parsed.contextUsagePercentage
+                            }
+                        });
                     }
                 }
-            }
-            
-            if (jsonEnd < 0) {
-                // 不完整的 JSON，保留在缓冲区等待更多数据
-                remaining = remaining.substring(jsonStart);
-                break;
-            }
-            
-            const jsonStr = remaining.substring(jsonStart, jsonEnd + 1);
-            try {
-                const parsed = JSON.parse(jsonStr);
-                // 处理 content 事件
-                if (parsed.content !== undefined && !parsed.followupPrompt) {
-                    // 处理转义字符
-                    let decodedContent = parsed.content;
-                    // 无须处理转义的换行符，原来要处理是因为智能体返回的 content 需要通过换行符切割不同的json
-                    // decodedContent = decodedContent.replace(/(?<!\\)\\n/g, '\n');
-                    events.push({ type: 'content', data: decodedContent });
-                }
-                // 处理结构化工具调用事件 - 开始事件（包含 name 和 toolUseId）
-                else if (parsed.name && parsed.toolUseId) {
-                    events.push({ 
-                        type: 'toolUse', 
-                        data: {
-                            name: parsed.name,
-                            toolUseId: parsed.toolUseId,
-                            input: parsed.input || '',
-                            stop: parsed.stop || false
-                        }
-                    });
-                }
-                // 处理工具调用的 input 续传事件（只有 input 字段）
-                else if (parsed.input !== undefined && !parsed.name) {
-                    events.push({
-                        type: 'toolUseInput',
-                        data: {
-                            input: parsed.input
-                        }
-                    });
-                }
-                // 处理工具调用的结束事件（只有 stop 字段，且不包含 contextUsagePercentage）
-                else if (parsed.stop !== undefined && parsed.contextUsagePercentage === undefined) {
-                    events.push({
-                        type: 'toolUseStop',
-                        data: {
-                            stop: parsed.stop
-                        }
-                    });
-                }
-                // 处理上下文使用百分比事件（最后一条消息）
-                else if (parsed.contextUsagePercentage !== undefined) {
-                    events.push({
-                        type: 'contextUsage',
-                        data: {
-                            contextUsagePercentage: parsed.contextUsagePercentage
-                        }
-                    });
-                }
+                
+                offset += totalLength;
             } catch (e) {
-                // JSON 解析失败，跳过这个位置继续搜索
-            }
-            
-            searchStart = jsonEnd + 1;
-            if (searchStart >= remaining.length) {
-                remaining = '';
+                // 解码失败，可能是不完整的消息，保留剩余数据
+                logger.debug('[Kiro] Event decode error:', e.message);
                 break;
             }
         }
         
-        // 如果 searchStart 有进展，截取剩余部分
-        if (searchStart > 0 && remaining.length > 0) {
-            remaining = remaining.substring(searchStart);
-        }
-        
+        // 返回未处理的剩余数据（Buffer 类型）
+        const remaining = uint8Buffer.slice(offset);
         return { events, remaining };
     }
 
@@ -1963,15 +1912,17 @@ async saveCredentialsToFile(filePath, newData) {
             });
 
             stream = response.data;
-            let buffer = '';
+            let buffer = Buffer.alloc(0);  // 使用 Buffer 类型存储二进制数据
             let lastContentEvent = null;  // 用于检测连续重复的 content 事件
 
             for await (const chunk of stream) {
-                buffer += chunk.toString();
+                // 将 chunk 转换为 Buffer 并拼接
+                const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+                buffer = Buffer.concat([buffer, chunkBuffer]);
                 
                 // 解析缓冲区中的事件
                 const { events, remaining } = this.parseAwsEventStreamBuffer(buffer);
-                buffer = remaining;
+                buffer = remaining;  // remaining 已经是 Buffer 类型
                 
                 // yield 所有事件，但过滤连续完全相同的 content 事件（Kiro API 有时会重复发送）
                 for (const event of events) {
