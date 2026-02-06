@@ -49,6 +49,7 @@ const FULL_MODEL_MAPPING = {
     "claude-haiku-4-5":"claude-haiku-4.5",
     "claude-opus-4-5":"claude-opus-4.5",
     "claude-opus-4-5-20251101":"claude-opus-4.5",
+    "claude-opus-4-6":"claude-opus-4.6",
     "claude-sonnet-4-5": "CLAUDE_SONNET_4_5_20250929_V1_0",
     "claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0"
 };
@@ -1483,6 +1484,14 @@ async saveCredentialsToFile(filePath, newData) {
             // 检查是否为可重试的网络错误
             const isNetworkError = isRetryableNetworkError(error);
             
+            // Handle 400 (Bad Request) - client error, don't count against credential
+            if (status === 400) {
+                logger.warn(`[Kiro] Received 400 (Bad Request): ${errorMessage}`);
+                // Don't mark credential as unhealthy, this is a client-side issue (e.g., message too large)
+                error.skipErrorCount = true;
+                throw error;
+            }
+
             // Handle 401 (Unauthorized) - refresh UUID first, then try to refresh token
             if (status === 401 && !isRetry) {
                 logger.info('[Kiro] Received 401. Refreshing UUID and triggering background refresh via PoolManager...');
@@ -1958,6 +1967,14 @@ async saveCredentialsToFile(filePath, newData) {
             // 检查是否为可重试的网络错误
             const isNetworkError = isRetryableNetworkError(error);
             
+            // Handle 400 (Bad Request) - client error, don't count against credential
+            if (status === 400) {
+                logger.warn(`[Kiro] Received 400 (Bad Request) in stream: ${errorMessage}`);
+                // Don't mark credential as unhealthy, this is a client-side issue (e.g., message too large)
+                error.skipErrorCount = true;
+                throw error;
+            }
+
             // Handle 401 (Unauthorized) - try to refresh token first
             if (status === 401 && !isRetry) {
                 logger.info('[Kiro] Received 401 in stream. Triggering background refresh via PoolManager...');
