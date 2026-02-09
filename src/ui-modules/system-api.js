@@ -128,16 +128,18 @@ export async function handleHealthCheck(req, res) {
  */
 export async function handleGetServiceMode(req, res) {
     const IS_WORKER_PROCESS = process.env.IS_WORKER_PROCESS === 'true';
+    const IS_CLUSTER_MODE = process.env.CLUSTER_MODE === 'true';
     const masterPort = process.env.MASTER_PORT || 3100;
     
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-        mode: IS_WORKER_PROCESS ? 'worker' : 'standalone',
+        mode: IS_CLUSTER_MODE ? 'cluster' : (IS_WORKER_PROCESS ? 'worker' : 'standalone'),
         pid: process.pid,
         ppid: process.ppid,
         uptime: process.uptime(),
         canAutoRestart: IS_WORKER_PROCESS && !!process.send,
         masterPort: IS_WORKER_PROCESS ? masterPort : null,
+        clusterWorkerId: process.env.CLUSTER_WORKER_ID || null,
         nodeVersion: process.version,
         platform: process.platform
     }));

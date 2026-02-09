@@ -118,6 +118,7 @@ import { getProviderPoolManager } from './service-manager.js';
 
 // 检测是否作为子进程运行
 const IS_WORKER_PROCESS = process.env.IS_WORKER_PROCESS === 'true';
+const IS_CLUSTER_MODE = process.env.CLUSTER_MODE === 'true';
 
 // 存储服务器实例，用于优雅关闭
 let serverInstance = null;
@@ -264,6 +265,9 @@ async function startServer() {
     // 设置服务器的最大连接数
     serverInstance.maxConnections = 1000;
     serverInstance.listen(CONFIG.SERVER_PORT, CONFIG.HOST, async () => {
+        if (IS_CLUSTER_MODE) {
+            logger.info(`--- Worker #${process.env.CLUSTER_WORKER_ID} (PID: ${process.pid}) started ---`);
+        }
         logger.info(`--- Unified API Server Configuration ---`);
         const configuredProviders = Array.isArray(CONFIG.DEFAULT_MODEL_PROVIDERS) && CONFIG.DEFAULT_MODEL_PROVIDERS.length > 0
             ? CONFIG.DEFAULT_MODEL_PROVIDERS
@@ -288,11 +292,11 @@ async function startServer() {
         logger.info(`  • Health check: /health`);
         logger.info(`  • UI Management Console: http://${CONFIG.HOST}:${CONFIG.SERVER_PORT}/`);
 
-        // Auto-open browser to UI (only if host is 0.0.0.0 or 127.0.0.1)
-        // if (CONFIG.HOST === '0.0.0.0' || CONFIG.HOST === '127.0.0.1') {
+        // Auto-open browser to UI - only once (skip for cluster workers except the first)
+        const shouldOpenBrowser = !IS_CLUSTER_MODE || (IS_CLUSTER_MODE && process.env.CLUSTER_WORKER_ID === '1');
+        if (shouldOpenBrowser) {
             try {
                 const open = (await import('open')).default;
-                // 作为子进程启动时，需要更长的延迟确保服务完全就绪
                 const openDelay = IS_WORKER_PROCESS ? 3000 : 1000;
                 setTimeout(() => {
                     let openUrl = `http://${CONFIG.HOST}:${CONFIG.SERVER_PORT}/login.html`;
@@ -310,19 +314,21 @@ async function startServer() {
             } catch (err) {
                 logger.info(`[UI] Login page available at: http://${CONFIG.HOST}:${CONFIG.SERVER_PORT}/login.html`);
             }
-        // }
+        }
 
-        if (CONFIG.CRON_REFRESH_TOKEN) {
+        // Cron and health checks only run in one worker to avoid duplicates
+        const isFirstWorker = !IS_CLUSTER_MODE || process.env.CLUSTER_WORKER_ID === '1';
+        if (CONFIG.CRON_REFRESH_TOKEN && isFirstWorker) {
             logger.info(`  • Cron Near Minutes: ${CONFIG.CRON_NEAR_MINUTES}`);
             logger.info(`  • Cron Refresh Token: ${CONFIG.CRON_REFRESH_TOKEN}`);
-            // 每 CRON_NEAR_MINUTES 分钟执行一次心跳日志和令牌刷新
             setInterval(heartbeatAndRefreshToken, CONFIG.CRON_NEAR_MINUTES * 60 * 1000);
         }
-        // 服务器完全启动后,执行初始健康检查
-        const poolManager = getProviderPoolManager();
-        if (poolManager) {
-            logger.info('[Initialization] Performing initial health checks for provider pools...');
-            poolManager.performHealthChecks(true);
+        if (isFirstWorker) {
+            const poolManager = getProviderPoolManager();
+            if (poolManager) {
+                logger.info('[Initialization] Performing initial health checks for provider pools...');
+                poolManager.performHealthChecks(true);
+            }
         }
 
         // 如果是子进程，通知主进程已就绪

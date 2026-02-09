@@ -1,17 +1,15 @@
 /**
- * 主进程 (Master Process)
+ * 主进程 (Master Process) - Cluster 多核模式
  * 
- * 负责管理子进程的生命周期，包括：
- * - 启动子进程
- * - 监控子进程状态
- * - 处理子进程重启请求
- * - 提供 IPC 通信
+ * 使用 Node.js cluster 模块启动多个 worker 进程共享同一端口，
+ * 充分利用多核 CPU，避免单核 100% 瓶颈。
  * 
  * 使用方式：
  * node src/core/master.js [原有的命令行参数]
  */
 
-import { fork } from 'child_process';
+import cluster from 'cluster';
+import { availableParallelism } from 'os';
 import logger from '../utils/logger.js';
 import * as http from 'http';
 import * as path from 'path';
@@ -20,219 +18,189 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 子进程实例
-let workerProcess = null;
+const numCPUs = availableParallelism();
 
-// 子进程状态
-let workerStatus = {
-    pid: null,
-    startTime: null,
-    restartCount: 0,
-    lastRestartTime: null,
-    isRestarting: false
-};
+// worker 状态跟踪
+const workerStatuses = new Map();
 
 // 配置
 const config = {
     workerScript: path.join(__dirname, '../services/api-server.js'),
     maxRestartAttempts: 10,
-    restartDelay: 1000, // 重启延迟（毫秒）
-    masterPort: parseInt(process.env.MASTER_PORT) || 3100, // 主进程管理端口
-    args: process.argv.slice(2) // 传递给子进程的参数
+    restartDelay: 1000,
+    masterPort: parseInt(process.env.MASTER_PORT) || 3100,
+    numWorkers: parseInt(process.env.CLUSTER_WORKERS) || numCPUs,
+    args: process.argv.slice(2)
 };
 
+// 全局重启锁
+let isRestartingAll = false;
+
 /**
- * 启动子进程
+ * 启动单个 worker
  */
-function startWorker() {
-    if (workerProcess) {
-        logger.info('[Master] Worker process already running, PID:', workerProcess.pid);
-        return;
-    }
-
-    logger.info('[Master] Starting worker process...');
-    logger.info('[Master] Worker script:', config.workerScript);
-    logger.info('[Master] Worker args:', config.args.join(' '));
-
-    workerProcess = fork(config.workerScript, config.args, {
-        stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
-        env: {
-            ...process.env,
-            IS_WORKER_PROCESS: 'true'
-        }
+function forkWorker() {
+    const workerCount = Object.keys(cluster.workers || {}).length + 1;
+    const worker = cluster.fork({
+        ...process.env,
+        IS_WORKER_PROCESS: 'true',
+        CLUSTER_MODE: 'true',
+        CLUSTER_WORKER_ID: String(workerCount)
     });
 
-    workerStatus.pid = workerProcess.pid;
-    workerStatus.startTime = new Date().toISOString();
-
-    logger.info('[Master] Worker process started, PID:', workerProcess.pid);
-
-    // 监听子进程消息
-    workerProcess.on('message', (message) => {
-        logger.info('[Master] Received message from worker:', message);
-        handleWorkerMessage(message);
+    workerStatuses.set(worker.id, {
+        pid: worker.process.pid,
+        startTime: new Date().toISOString(),
+        restartCount: 0,
+        isRunning: true
     });
 
-    // 监听子进程退出
-    workerProcess.on('exit', (code, signal) => {
-        logger.info(`[Master] Worker process exited with code ${code}, signal ${signal}`);
-        workerProcess = null;
-        workerStatus.pid = null;
+    logger.info(`[Master] Worker #${worker.id} started, PID: ${worker.process.pid}`);
 
-        // 如果不是主动重启导致的退出，尝试自动重启
-        if (!workerStatus.isRestarting && code !== 0) {
-            logger.info('[Master] Worker crashed, attempting auto-restart...');
-            scheduleRestart();
-        }
+    worker.on('message', (message) => {
+        handleWorkerMessage(worker, message);
     });
 
-    // 监听子进程错误
-    workerProcess.on('error', (error) => {
-        logger.error('[Master] Worker process error:', error.message);
-    });
+    return worker;
 }
 
 /**
- * 停止子进程
- * @param {boolean} graceful - 是否优雅关闭
+ * 启动所有 worker
+ */
+function startAllWorkers() {
+    const count = config.numWorkers;
+    logger.info(`[Master] Starting ${count} worker(s) for ${numCPUs} CPU core(s)...`);
+
+    for (let i = 0; i < count; i++) {
+        forkWorker();
+    }
+}
+
+/**
+ * 停止所有 worker
+ * @param {boolean} graceful
  * @returns {Promise<void>}
  */
-function stopWorker(graceful = true) {
+function stopAllWorkers(graceful = true) {
     return new Promise((resolve) => {
-        if (!workerProcess) {
-            logger.info('[Master] No worker process to stop');
+        const workers = Object.values(cluster.workers || {});
+        if (workers.length === 0) {
             resolve();
             return;
         }
 
-        logger.info('[Master] Stopping worker process, PID:', workerProcess.pid);
+        let remaining = workers.length;
+        const onDone = () => {
+            remaining--;
+            if (remaining <= 0) resolve();
+        };
 
         const timeout = setTimeout(() => {
-            if (workerProcess) {
-                logger.info('[Master] Force killing worker process...');
-                workerProcess.kill('SIGKILL');
+            for (const w of Object.values(cluster.workers || {})) {
+                try { w.process.kill('SIGKILL'); } catch (_) {}
             }
             resolve();
-        }, 5000); // 5秒超时后强制杀死
+        }, 5000);
 
-        workerProcess.once('exit', () => {
-            clearTimeout(timeout);
-            workerProcess = null;
-            workerStatus.pid = null;
-            logger.info('[Master] Worker process stopped');
-            resolve();
-        });
-
-        if (graceful) {
-            // 发送优雅关闭信号
-            workerProcess.send({ type: 'shutdown' });
-            workerProcess.kill('SIGTERM');
-        } else {
-            workerProcess.kill('SIGKILL');
+        for (const w of workers) {
+            w.once('exit', () => {
+                onDone();
+                if (remaining <= 0) clearTimeout(timeout);
+            });
+            if (graceful) {
+                try { w.send({ type: 'shutdown' }); } catch (_) {}
+                w.kill('SIGTERM');
+            } else {
+                w.process.kill('SIGKILL');
+            }
         }
     });
 }
 
 /**
- * 重启子进程
+ * 重启所有 worker（滚动重启）
  * @returns {Promise<Object>}
  */
-async function restartWorker() {
-    if (workerStatus.isRestarting) {
-        logger.info('[Master] Restart already in progress');
+async function restartAllWorkers() {
+    if (isRestartingAll) {
         return { success: false, message: 'Restart already in progress' };
     }
 
-    workerStatus.isRestarting = true;
-    workerStatus.restartCount++;
-    workerStatus.lastRestartTime = new Date().toISOString();
-
-    logger.info('[Master] Restarting worker process...');
+    isRestartingAll = true;
+    logger.info('[Master] Restarting all workers...');
 
     try {
-        await stopWorker(true);
-        
-        // 等待一小段时间确保端口释放
+        await stopAllWorkers(true);
         await new Promise(resolve => setTimeout(resolve, config.restartDelay));
-        
-        startWorker();
-        workerStatus.isRestarting = false;
-
+        workerStatuses.clear();
+        startAllWorkers();
+        isRestartingAll = false;
         return {
             success: true,
-            message: 'Worker restarted successfully',
-            pid: workerStatus.pid,
-            restartCount: workerStatus.restartCount
+            message: `All ${config.numWorkers} workers restarted`,
+            workers: getWorkersInfo()
         };
     } catch (error) {
-        workerStatus.isRestarting = false;
-        logger.error('[Master] Failed to restart worker:', error.message);
-        return {
-            success: false,
-            message: 'Failed to restart worker: ' + error.message
-        };
+        isRestartingAll = false;
+        logger.error('[Master] Failed to restart workers:', error.message);
+        return { success: false, message: 'Failed to restart: ' + error.message };
     }
 }
 
 /**
- * 计划重启（用于崩溃后自动重启）
+ * 处理来自 worker 的消息
  */
-function scheduleRestart() {
-    if (workerStatus.restartCount >= config.maxRestartAttempts) {
-        logger.error('[Master] Max restart attempts reached, giving up');
-        return;
-    }
-
-    const delay = Math.min(config.restartDelay * Math.pow(2, workerStatus.restartCount), 30000);
-    logger.info(`[Master] Scheduling restart in ${delay}ms...`);
-
-    setTimeout(() => {
-        restartWorker();
-    }, delay);
-}
-
-/**
- * 处理来自子进程的消息
- * @param {Object} message - 消息对象
- */
-function handleWorkerMessage(message) {
+function handleWorkerMessage(worker, message) {
     if (!message || !message.type) return;
 
     switch (message.type) {
         case 'ready':
-            logger.info('[Master] Worker is ready');
+            logger.info(`[Master] Worker #${worker.id} (PID: ${worker.process.pid}) is ready`);
             break;
         case 'restart_request':
-            logger.info('[Master] Worker requested restart');
-            restartWorker();
+            logger.info(`[Master] Worker #${worker.id} requested restart`);
+            restartAllWorkers();
             break;
         case 'status':
-            logger.info('[Master] Worker status:', message.data);
+            logger.info(`[Master] Worker #${worker.id} status:`, message.data);
             break;
         default:
-            logger.info('[Master] Unknown message type:', message.type);
+            break;
     }
 }
 
 /**
+ * 获取所有 worker 信息
+ */
+function getWorkersInfo() {
+    const workers = [];
+    for (const id in cluster.workers) {
+        const w = cluster.workers[id];
+        const status = workerStatuses.get(parseInt(id)) || {};
+        workers.push({
+            id: parseInt(id),
+            pid: w.process.pid,
+            startTime: status.startTime,
+            restartCount: status.restartCount || 0,
+            isRunning: !w.isDead()
+        });
+    }
+    return workers;
+}
+
+/**
  * 获取状态信息
- * @returns {Object}
  */
 function getStatus() {
     return {
         master: {
             pid: process.pid,
             uptime: process.uptime(),
-            memoryUsage: process.memoryUsage()
+            memoryUsage: process.memoryUsage(),
+            numCPUs: numCPUs,
+            configuredWorkers: config.numWorkers
         },
-        worker: {
-            pid: workerStatus.pid,
-            startTime: workerStatus.startTime,
-            restartCount: workerStatus.restartCount,
-            lastRestartTime: workerStatus.lastRestartTime,
-            isRestarting: workerStatus.isRestarting,
-            isRunning: workerProcess !== null
-        }
+        workers: getWorkersInfo()
     };
 }
 
@@ -242,10 +210,9 @@ function getStatus() {
 function createMasterServer() {
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url, `http://${req.headers.host}`);
-        const path = url.pathname;
+        const urlPath = url.pathname;
         const method = req.method;
 
-        // 设置 CORS 头
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -256,57 +223,54 @@ function createMasterServer() {
             return;
         }
 
-        // 状态端点
-        if (method === 'GET' && path === '/master/status') {
+        if (method === 'GET' && urlPath === '/master/status') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(getStatus()));
             return;
         }
 
-        // 重启端点
-        if (method === 'POST' && path === '/master/restart') {
+        if (method === 'POST' && urlPath === '/master/restart') {
             logger.info('[Master] Restart requested via API');
-            const result = await restartWorker();
+            const result = await restartAllWorkers();
             res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(result));
             return;
         }
 
-        // 停止端点
-        if (method === 'POST' && path === '/master/stop') {
+        if (method === 'POST' && urlPath === '/master/stop') {
             logger.info('[Master] Stop requested via API');
-            await stopWorker(true);
+            await stopAllWorkers(true);
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, message: 'Worker stopped' }));
+            res.end(JSON.stringify({ success: true, message: 'All workers stopped' }));
             return;
         }
 
-        // 启动端点
-        if (method === 'POST' && path === '/master/start') {
+        if (method === 'POST' && urlPath === '/master/start') {
             logger.info('[Master] Start requested via API');
-            if (workerProcess) {
+            const currentWorkers = Object.keys(cluster.workers || {}).length;
+            if (currentWorkers >= config.numWorkers) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: false, message: 'Worker already running' }));
+                res.end(JSON.stringify({ success: false, message: 'All workers already running' }));
                 return;
             }
-            startWorker();
+            startAllWorkers();
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, message: 'Worker started', pid: workerStatus.pid }));
+            res.end(JSON.stringify({ success: true, message: 'Workers started', workers: getWorkersInfo() }));
             return;
         }
 
-        // 健康检查
-        if (method === 'GET' && path === '/master/health') {
+        if (method === 'GET' && urlPath === '/master/health') {
+            const aliveCount = Object.values(cluster.workers || {}).filter(w => !w.isDead()).length;
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 status: 'healthy',
-                workerRunning: workerProcess !== null,
+                workersRunning: aliveCount,
+                totalWorkers: config.numWorkers,
                 timestamp: new Date().toISOString()
             }));
             return;
         }
 
-        // 404
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Not Found' }));
     });
@@ -314,11 +278,11 @@ function createMasterServer() {
     server.listen(config.masterPort, () => {
         logger.info(`[Master] Management server listening on port ${config.masterPort}`);
         logger.info(`[Master] Available endpoints:`);
-        logger.info(`  GET  /master/status  - Get master and worker status`);
+        logger.info(`  GET  /master/status  - Get master and workers status`);
         logger.info(`  GET  /master/health  - Health check`);
-        logger.info(`  POST /master/restart - Restart worker process`);
-        logger.info(`  POST /master/stop    - Stop worker process`);
-        logger.info(`  POST /master/start   - Start worker process`);
+        logger.info(`  POST /master/restart - Restart all workers`);
+        logger.info(`  POST /master/stop    - Stop all workers`);
+        logger.info(`  POST /master/start   - Start workers`);
     });
 
     return server;
@@ -328,20 +292,18 @@ function createMasterServer() {
  * 处理进程信号
  */
 function setupSignalHandlers() {
-    // 优雅关闭
     process.on('SIGTERM', async () => {
         logger.info('[Master] Received SIGTERM, shutting down...');
-        await stopWorker(true);
+        await stopAllWorkers(true);
         process.exit(0);
     });
 
     process.on('SIGINT', async () => {
         logger.info('[Master] Received SIGINT, shutting down...');
-        await stopWorker(true);
+        await stopAllWorkers(true);
         process.exit(0);
     });
 
-    // 未捕获的异常
     process.on('uncaughtException', (error) => {
         logger.error('[Master] Uncaught exception:', error);
     });
@@ -352,27 +314,58 @@ function setupSignalHandlers() {
 }
 
 /**
+ * 设置 cluster 事件监听
+ */
+function setupClusterEvents() {
+    cluster.on('exit', (worker, code, signal) => {
+        logger.info(`[Master] Worker #${worker.id} (PID: ${worker.process.pid}) exited, code: ${code}, signal: ${signal}`);
+        workerStatuses.delete(worker.id);
+
+        if (!isRestartingAll && code !== 0) {
+            const totalRestarts = Array.from(workerStatuses.values()).reduce((sum, s) => sum + (s.restartCount || 0), 0);
+            if (totalRestarts < config.maxRestartAttempts) {
+                logger.info(`[Master] Restarting crashed worker...`);
+                setTimeout(() => {
+                    const newWorker = forkWorker();
+                    const status = workerStatuses.get(newWorker.id);
+                    if (status) status.restartCount = (status.restartCount || 0) + 1;
+                }, config.restartDelay);
+            } else {
+                logger.error('[Master] Max restart attempts reached, not restarting worker');
+            }
+        }
+    });
+}
+
+/**
  * 主函数
  */
 async function main() {
-    logger.info('='.repeat(50));
-    logger.info('[Master] AIClient2API Master Process');
-    logger.info('[Master] PID:', process.pid);
-    logger.info('[Master] Node version:', process.version);
-    logger.info('[Master] Working directory:', process.cwd());
-    logger.info('='.repeat(50));
+    if (cluster.isPrimary) {
+        logger.info('='.repeat(50));
+        logger.info('[Master] AIClient2API Master Process (Cluster Mode)');
+        logger.info('[Master] PID:', process.pid);
+        logger.info('[Master] Node version:', process.version);
+        logger.info('[Master] CPU cores:', numCPUs);
+        logger.info('[Master] Workers to start:', config.numWorkers);
+        logger.info('[Master] Working directory:', process.cwd());
+        logger.info('='.repeat(50));
 
-    // 设置信号处理
-    setupSignalHandlers();
+        // cluster 模式下，设置 worker 执行的脚本
+        cluster.setupPrimary({
+            exec: config.workerScript,
+            args: config.args,
+            silent: false
+        });
 
-    // 创建管理服务器
-    createMasterServer();
-
-    // 启动子进程
-    startWorker();
+        setupSignalHandlers();
+        setupClusterEvents();
+        createMasterServer();
+        startAllWorkers();
+    }
+    // worker 进程由 cluster.fork() 自动执行 workerScript (api-server.js)
 }
 
-// 启动主进程
 main().catch(error => {
     logger.error('[Master] Failed to start:', error);
     process.exit(1);
