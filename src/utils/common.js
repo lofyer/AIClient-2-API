@@ -418,6 +418,9 @@ export async function handleStreamRequest(res, service, model, requestBody, from
             // 400 报错码通常是请求参数问题，不记录为提供商错误
             if (status === 400) {
                 logger.info(`[Provider Pool] Skipping unhealthy marking for ${toProvider} (${pooluuid}) due to status 400 (client error)`);
+            } else if (status === 403) {
+                // 403 非 suspended 不累积错误计数，避免 token 刷新期间把所有凭证打成不健康
+                logger.info(`[Provider Pool] Skipping unhealthy marking for ${toProvider} (${pooluuid}) due to status 403 (will refresh credential instead)`);
             } else {
                 logger.info(`[Provider Pool] Marking ${toProvider} as unhealthy due to stream error (status: ${status || 'unknown'})`);
                 // 如果是号池模式，并且请求处理失败，则标记当前使用的提供者为不健康
@@ -569,6 +572,9 @@ export async function handleUnaryRequest(res, service, model, requestBody, fromP
             // 400 报错码通常是请求参数问题，不记录为提供商错误
             if (status === 400) {
                 logger.info(`[Provider Pool] Skipping unhealthy marking for ${toProvider} (${pooluuid}) due to status 400 (client error)`);
+            } else if (status === 403) {
+                // 403 非 suspended 不累积错误计数，避免 token 刷新期间把所有凭证打成不健康
+                logger.info(`[Provider Pool] Skipping unhealthy marking for ${toProvider} (${pooluuid}) due to status 403 (will refresh credential instead)`);
             } else {
                 logger.info(`[Provider Pool] Marking ${toProvider} as unhealthy due to unary error (status: ${status || 'unknown'})`);
                 // 如果是号池模式，并且请求处理失败，则标记当前使用的提供者为不健康
