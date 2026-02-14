@@ -1,9 +1,80 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { promises as pfs } from 'fs';
+import * as path from 'path';
 import logger from '../utils/logger.js';
 import { getRequestBody } from '../utils/common.js';
 import { getAllProviderModels, getProviderModels } from '../providers/provider-models.js';
-import { generateUUID, createProviderConfig, formatSystemPath, detectProviderFromPath, addToUsedPaths, isPathUsed, pathsEqual } from '../utils/provider-utils.js';
+import { generateUUID, createProviderConfig, formatSystemPath, detectProviderFromPath, addToUsedPaths, isPathUsed, pathsEqual, PROVIDER_MAPPINGS } from '../utils/provider-utils.js';
 import { broadcastEvent } from './event-broadcast.js';
+
+/**
+ * 删除提供商对应的凭证文件及其所在目录（如果目录为空）
+ * @param {Object} providerConfig - 提供商配置对象
+ * @param {string} providerType - 提供商类型
+ */
+async function cleanupProviderCredentialFiles(providerConfig, providerType) {
+    const mapping = PROVIDER_MAPPINGS.find(m => m.providerType === providerType);
+    if (!mapping) return;
+
+    const credPath = providerConfig[mapping.credPathKey];
+    if (!credPath) return;
+
+    const absolutePath = path.isAbsolute(credPath)
+        ? credPath
+        : path.join(process.cwd(), credPath);
+
+    try {
+        // 删除凭证文件
+        await pfs.unlink(absolutePath);
+        logger.info(`[UI API] Deleted credential file: ${credPath}`);
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            logger.warn(`[UI API] Failed to delete credential file ${credPath}: ${error.message}`);
+        }
+    }
+
+    // 删除同目录下的其他关联文件，然后删除空目录
+    const dirPath = path.dirname(absolutePath);
+    try {
+        const remaining = await pfs.readdir(dirPath);
+        if (remaining.length === 0) {
+            await pfs.rmdir(dirPath);
+            logger.info(`[UI API] Deleted empty credential directory: ${dirPath}`);
+        } else {
+            // 目录下还有其他文件（如同一凭证的关联文件），全部删除
+            // 仅当目录在 configs/ 下时才执行，避免误删
+            const configsBase = path.join(process.cwd(), 'configs');
+            if (dirPath.startsWith(configsBase)) {
+                for (const file of remaining) {
+                    const filePath = path.join(dirPath, file);
+                    try {
+                        const stat = await pfs.stat(filePath);
+                        if (stat.isFile()) {
+                            await pfs.unlink(filePath);
+                            logger.info(`[UI API] Deleted related credential file: ${filePath}`);
+                        }
+                    } catch (e) {
+                        logger.warn(`[UI API] Failed to delete ${filePath}: ${e.message}`);
+                    }
+                }
+                // 再次尝试删除目录
+                try {
+                    const afterCleanup = await pfs.readdir(dirPath);
+                    if (afterCleanup.length === 0) {
+                        await pfs.rmdir(dirPath);
+                        logger.info(`[UI API] Deleted credential directory: ${dirPath}`);
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+        }
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            logger.warn(`[UI API] Failed to cleanup directory ${dirPath}: ${error.message}`);
+        }
+    }
+}
 
 /**
  * 获取提供商池摘要
@@ -293,6 +364,9 @@ export async function handleDeleteProvider(req, res, currentConfig, providerPool
         writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
         logger.info(`[UI API] Deleted provider ${providerUuid} from ${providerType}`);
 
+        // 清理凭证文件和目录
+        await cleanupProviderCredentialFiles(deletedProvider, providerType);
+
         // Update provider pool manager if available
         if (providerPoolManager) {
             providerPoolManager.providerPools = providerPools;
@@ -526,6 +600,11 @@ export async function handleDeleteUnhealthyProviders(req, res, currentConfig, pr
         // Save to file
         writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
         logger.info(`[UI API] Deleted ${unhealthyProviders.length} unhealthy providers from ${providerType}`);
+
+        // 清理所有不健康提供商的凭证文件和目录
+        for (const provider of unhealthyProviders) {
+            await cleanupProviderCredentialFiles(provider, providerType);
+        }
 
         // Update provider pool manager if available
         if (providerPoolManager) {
