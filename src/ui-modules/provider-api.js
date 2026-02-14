@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, promises as fs } from 'fs';
+import * as path from 'path';
 import logger from '../utils/logger.js';
 import { getRequestBody } from '../utils/common.js';
 import { getAllProviderModels, getProviderModels } from '../providers/provider-models.js';
@@ -292,6 +293,28 @@ export async function handleDeleteProvider(req, res, currentConfig, providerPool
         // Save to file
         writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
         logger.info(`[UI API] Deleted provider ${providerUuid} from ${providerType}`);
+
+        // 删除对应的 OAuth 配置文件目录
+        const oauthCredsPathKeys = [
+            'KIRO_OAUTH_CREDS_FILE_PATH',
+            'GEMINI_OAUTH_CREDS_FILE_PATH',
+            'QWEN_OAUTH_CREDS_FILE_PATH'
+        ];
+        for (const key of oauthCredsPathKeys) {
+            if (deletedProvider[key]) {
+                try {
+                    const credsFilePath = deletedProvider[key];
+                    const credsDir = path.dirname(path.join(process.cwd(), credsFilePath));
+                    if (existsSync(credsDir)) {
+                        await fs.rm(credsDir, { recursive: true, force: true });
+                        logger.info(`[UI API] Deleted OAuth config directory: ${credsDir}`);
+                    }
+                } catch (deleteError) {
+                    logger.warn(`[UI API] Failed to delete OAuth config directory: ${deleteError.message}`);
+                }
+                break;
+            }
+        }
 
         // Update provider pool manager if available
         if (providerPoolManager) {
