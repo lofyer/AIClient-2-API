@@ -71,7 +71,7 @@ export function initializeUIManagement() {
 
     // Override console.log to broadcast logs
     const originalLog = console.log;
-    console.log = function(...args) {
+    console.log = function (...args) {
         originalLog.apply(console, args);
         const logEntry = {
             timestamp: new Date().toISOString(),
@@ -94,7 +94,7 @@ export function initializeUIManagement() {
 
     // Override console.error to broadcast errors
     const originalError = console.error;
-    console.error = function(...args) {
+    console.error = function (...args) {
         originalError.apply(console, args);
         const logEntry = {
             timestamp: new Date().toISOString(),
@@ -182,42 +182,48 @@ export function handleUploadOAuthCredentials(req, res, options = {}) {
         userInfo = '',
         customUpload = null
     } = options;
-    
-    // 先尝试解析是否为多文件上传
-    const uploadMiddleware = customUpload 
-        ? customUpload.array('files', 10) 
-        : uploadMultiple.array('files', 10);
-    
+
+    // 使用 fields() 同时支持 'file' (单文件) 和 'files' (多文件) 两种字段名，避免双重解析消耗请求流
+    const uploadMiddleware = customUpload
+        ? customUpload.fields([{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: 10 }])
+        : uploadMultiple.fields([{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: 10 }]);
+
     return new Promise((resolve) => {
         uploadMiddleware(req, res, async (err) => {
-            // 如果多文件上传失败，尝试单文件上传
-            if (err || (!req.files || req.files.length === 0)) {
-                // 回退到单文件上传
-                const singleUploadMiddleware = customUpload 
-                    ? customUpload.single('file') 
-                    : upload.single('file');
-                
-                singleUploadMiddleware(req, res, async (singleErr) => {
-                    if (singleErr) {
-                        logger.error(`${logPrefix} File upload error:`, singleErr.message);
-                        res.writeHead(400, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({
-                            error: {
-                                message: singleErr.message || 'File upload failed'
-                            }
-                        }));
-                        resolve(true);
-                        return;
+            if (err) {
+                logger.error(`${logPrefix} File upload error:`, err.message);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    error: {
+                        message: err.message || 'File upload failed'
                     }
-                    
-                    // 处理单文件上传
-                    await handleSingleFileUpload(req, res, options, resolve);
-                });
+                }));
+                resolve(true);
                 return;
             }
 
-            // 处理多文件上传
-            await handleMultipleFilesUpload(req, res, options, resolve);
+            // 判断是多文件还是单文件
+            const multiFiles = req.files?.['files'];
+            const singleFile = req.files?.['file'];
+
+            if (multiFiles && multiFiles.length > 0) {
+                // 多文件上传：将 req.files 设置为数组格式，兼容 handleMultipleFilesUpload
+                req.files = multiFiles;
+                await handleMultipleFilesUpload(req, res, options, resolve);
+            } else if (singleFile && singleFile.length > 0) {
+                // 单文件上传：将 req.file 设置为单文件格式，兼容 handleSingleFileUpload
+                req.file = singleFile[0];
+                await handleSingleFileUpload(req, res, options, resolve);
+            } else {
+                // 没有文件上传
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    error: {
+                        message: 'No file was uploaded'
+                    }
+                }));
+                resolve(true);
+            }
         });
     });
 }
@@ -231,7 +237,7 @@ async function handleSingleFileUpload(req, res, options, resolve) {
         logPrefix = '[UI API]',
         userInfo = ''
     } = options;
-    
+
     try {
         if (!req.file) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -249,10 +255,10 @@ async function handleSingleFileUpload(req, res, options, resolve) {
         // 应用提供商映射（如果有）
         const provider = providerMap[providerType] || providerType;
         const tempFilePath = req.file.path;
-        
+
         // 根据实际的provider移动文件到正确的目录
         let targetDir = path.join(process.cwd(), 'configs', provider);
-        
+
         // 如果是kiro类型的凭证，需要再包裹一层文件夹
         if (provider === 'kiro') {
             // 使用时间戳作为子文件夹名称，确保每个上传的文件都有独立的目录
@@ -261,12 +267,12 @@ async function handleSingleFileUpload(req, res, options, resolve) {
             const subFolder = `${timestamp}_${originalNameWithoutExt}`;
             targetDir = path.join(targetDir, subFolder);
         }
-        
+
         await fs.mkdir(targetDir, { recursive: true });
-        
+
         const targetFilePath = path.join(targetDir, req.file.filename);
         await fs.rename(tempFilePath, targetFilePath);
-        
+
         const relativePath = path.relative(process.cwd(), targetFilePath);
 
         // 广播更新事件
@@ -311,7 +317,7 @@ async function handleMultipleFilesUpload(req, res, options, resolve) {
         logPrefix = '[UI API]',
         userInfo = ''
     } = options;
-    
+
     try {
         if (!req.files || req.files.length === 0) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -326,33 +332,33 @@ async function handleMultipleFilesUpload(req, res, options, resolve) {
 
         const providerType = req.body.provider || 'common';
         const provider = providerMap[providerType] || providerType;
-        
+
         // 创建目标目录（所有文件放在同一个目录下）
         let targetDir = path.join(process.cwd(), 'configs', provider);
-        
+
         // 如果是kiro类型的凭证，创建一个共享的子文件夹
         if (provider === 'kiro') {
             const timestamp = Date.now();
             const subFolder = `${timestamp}_kiro-multi-creds`;
             targetDir = path.join(targetDir, subFolder);
         }
-        
+
         await fs.mkdir(targetDir, { recursive: true });
-        
+
         // 移动所有文件到目标目录
         const uploadedFiles = [];
         let primaryFilePath = null;
-        
+
         for (const file of req.files) {
             const targetFilePath = path.join(targetDir, file.filename);
             await fs.rename(file.path, targetFilePath);
-            
+
             const relativePath = path.relative(process.cwd(), targetFilePath);
             uploadedFiles.push({
                 originalName: file.originalname,
                 filePath: relativePath
             });
-            
+
             // 第一个文件作为主文件路径返回
             if (!primaryFilePath) {
                 primaryFilePath = relativePath;

@@ -734,13 +734,13 @@ async function handleUserUpload(req, res, apiKey) {
         userUpload.single('file')(req, res, async (err) => {
             if (err) {
                 logger.error('[API Potluck User] File upload error:', err.message);
-                sendJson(res, 400, { success: false, error: err.message });
+                sendJson(res, 400, { success: false, error: { message: err.message } });
                 resolve(true);
                 return;
             }
             
             if (!req.file) {
-                sendJson(res, 400, { success: false, error: 'No file uploaded' });
+                sendJson(res, 400, { success: false, error: { message: 'No file uploaded' } });
                 resolve(true);
                 return;
             }
@@ -800,7 +800,7 @@ async function handleUserUpload(req, res, apiKey) {
                 
             } catch (error) {
                 logger.error('[API Potluck User] File processing error:', error);
-                sendJson(res, 500, { success: false, error: error.message });
+                sendJson(res, 500, { success: false, error: { message: error.message } });
                 resolve(true);
             }
         });

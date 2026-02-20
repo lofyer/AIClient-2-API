@@ -1388,7 +1388,8 @@ aorAyyyyyyyy"></textarea>
                             showToast('文件上传成功', 'success');
                             loadCredentials();
                         } else {
-                            throw new Error(data.error?.message || '上传失败');
+                            const errMsg = typeof data.error === 'string' ? data.error : (data.error?.message || '上传失败');
+                            throw new Error(errMsg);
                         }
                     } catch (error) {
                         status.textContent = '✗ ' + error.message;
