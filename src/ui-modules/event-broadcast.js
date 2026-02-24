@@ -356,12 +356,67 @@ async function handleMultipleFilesUpload(req, res, options, resolve) {
             const relativePath = path.relative(process.cwd(), targetFilePath);
             uploadedFiles.push({
                 originalName: file.originalname,
-                filePath: relativePath
+                filePath: targetFilePath,
+                relativePath: relativePath
             });
 
-            // 第一个文件作为主文件路径返回
             if (!primaryFilePath) {
                 primaryFilePath = relativePath;
+            }
+        }
+
+        // Kiro 凭证自动合并：将多个 JSON 文件合并为一个 kiro-auth-token.json
+        if (provider === 'kiro' && uploadedFiles.length > 1) {
+            try {
+                let mergedData = {};
+                let primaryData = {};
+                const KIRO_PRIMARY_FILENAME = 'kiro-auth-token.json';
+
+                // 先找到主文件（kiro-auth-token.json），其余为补充文件
+                const primaryFile = uploadedFiles.find(f => f.originalName === KIRO_PRIMARY_FILENAME);
+                const supplementFiles = uploadedFiles.filter(f => f.originalName !== KIRO_PRIMARY_FILENAME);
+
+                // 先加载补充文件
+                for (const file of supplementFiles) {
+                    try {
+                        const content = await fs.readFile(file.filePath, 'utf8');
+                        const parsed = JSON.parse(content);
+                        Object.assign(mergedData, parsed);
+                    } catch (e) {
+                        logger.warn(`${logPrefix} Failed to parse supplement file ${file.originalName}: ${e.message}`);
+                    }
+                }
+
+                // 再加载主文件（覆盖补充文件的同名字段）
+                if (primaryFile) {
+                    try {
+                        const content = await fs.readFile(primaryFile.filePath, 'utf8');
+                        primaryData = JSON.parse(content);
+                        Object.assign(mergedData, primaryData);
+                    } catch (e) {
+                        logger.warn(`${logPrefix} Failed to parse primary file ${KIRO_PRIMARY_FILENAME}: ${e.message}`);
+                    }
+                }
+
+                // 写入合并后的文件
+                const mergedFilePath = path.join(targetDir, KIRO_PRIMARY_FILENAME);
+                await fs.writeFile(mergedFilePath, JSON.stringify(mergedData, null, 2), 'utf8');
+
+                // 删除原始的单独文件
+                for (const file of uploadedFiles) {
+                    try {
+                        if (file.filePath !== mergedFilePath) {
+                            await fs.unlink(file.filePath);
+                        }
+                    } catch (e) {
+                        logger.warn(`${logPrefix} Failed to remove temp file ${file.filePath}: ${e.message}`);
+                    }
+                }
+
+                primaryFilePath = path.relative(process.cwd(), mergedFilePath);
+                logger.info(`${logPrefix} Kiro credentials merged: ${uploadedFiles.length} files -> ${mergedFilePath} (${Object.keys(mergedData).length} fields)`);
+            } catch (mergeError) {
+                logger.warn(`${logPrefix} Kiro credentials merge failed, keeping individual files: ${mergeError.message}`);
             }
         }
 
@@ -369,7 +424,7 @@ async function handleMultipleFilesUpload(req, res, options, resolve) {
         broadcastEvent('config_update', {
             action: 'add',
             filePath: primaryFilePath,
-            files: uploadedFiles,
+            files: uploadedFiles.map(f => ({ originalName: f.originalName, filePath: f.relativePath || f.filePath })),
             provider: provider,
             timestamp: new Date().toISOString()
         });
@@ -380,9 +435,9 @@ async function handleMultipleFilesUpload(req, res, options, resolve) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             success: true,
-            message: `${uploadedFiles.length} files uploaded successfully`,
+            message: `${uploadedFiles.length} files uploaded and merged successfully`,
             filePath: primaryFilePath,
-            files: uploadedFiles,
+            files: uploadedFiles.map(f => ({ originalName: f.originalName, filePath: f.relativePath || f.filePath })),
             provider: provider
         }));
         resolve(true);

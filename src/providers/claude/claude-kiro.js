@@ -2812,13 +2812,13 @@ async saveCredentialsToFile(filePath, newData) {
         // Token 刷新策略：
         // 1. 已过期 → 必须等待刷新
         // 2. 即将过期但还能用 → 后台异步刷新，不阻塞当前请求
-        // if (this.isTokenExpired()) {
-        //     logger.info('[Kiro] Token is expired, must refresh before getUsageLimits request...');
-        //     await this.initializeAuth(true);
-        // } else if (this.isExpiryDateNear()) {
-        //     logger.info('[Kiro] Token is near expiry, triggering background refresh...');
-        //     this.triggerBackgroundRefresh();
-        // }
+        if (this.isTokenExpired()) {
+            logger.info('[Kiro] Token is expired, must refresh before getUsageLimits request...');
+            await this.initializeAuth(true);
+        } else if (this.isExpiryDateNear()) {
+            logger.info('[Kiro] Token is near expiry, triggering background refresh...');
+            this.triggerBackgroundRefresh();
+        }
         
         // 内部固定的资源类型
         const resourceType = 'AGENTIC_REQUEST';

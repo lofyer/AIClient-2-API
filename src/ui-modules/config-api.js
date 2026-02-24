@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { CONFIG } from '../core/config-manager.js';
 import { serviceInstances } from '../providers/adapter.js';
-import { initApiService } from '../services/service-manager.js';
+import { initApiService, autoLinkProviderConfigs } from '../services/service-manager.js';
 import { getRequestBody } from '../utils/common.js';
 import { broadcastEvent } from '../ui-modules/event-broadcast.js';
 
@@ -190,6 +190,13 @@ export async function handleUpdateConfig(req, res, currentConfig) {
 
         // Update the global CONFIG object to reflect changes immediately
         Object.assign(CONFIG, currentConfig);
+
+        // 自动关联 configs 目录中未关联的配置文件到 Pools
+        try {
+            await autoLinkProviderConfigs(CONFIG);
+        } catch (linkError) {
+            logger.warn('[UI API] Auto-link provider configs failed:', linkError.message);
+        }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({

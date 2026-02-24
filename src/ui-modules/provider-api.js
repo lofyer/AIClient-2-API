@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { promises as pfs } from 'fs';
 import * as path from 'path';
 import logger from '../utils/logger.js';
@@ -6,6 +6,7 @@ import { getRequestBody } from '../utils/common.js';
 import { getAllProviderModels, getProviderModels } from '../providers/provider-models.js';
 import { generateUUID, createProviderConfig, formatSystemPath, detectProviderFromPath, addToUsedPaths, isPathUsed, pathsEqual, PROVIDER_MAPPINGS } from '../utils/provider-utils.js';
 import { broadcastEvent } from './event-broadcast.js';
+import { atomicWriteFileSync } from '../utils/atomic-write.js';
 
 /**
  * 删除提供商对应的凭证文件及其所在目录（如果目录为空）
@@ -195,7 +196,7 @@ export async function handleAddProvider(req, res, currentConfig, providerPoolMan
         providerPools[providerType].push(providerConfig);
 
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Added new provider to ${providerType}: ${providerConfig.uuid}`);
 
         // Update provider pool manager if available
@@ -290,7 +291,7 @@ export async function handleUpdateProvider(req, res, currentConfig, providerPool
         providerPools[providerType][providerIndex] = updatedProvider;
 
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Updated provider ${providerUuid} in ${providerType}`);
 
         // Update provider pool manager if available
@@ -361,7 +362,7 @@ export async function handleDeleteProvider(req, res, currentConfig, providerPool
         }
 
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Deleted provider ${providerUuid} from ${providerType}`);
 
         // 清理凭证文件和目录
@@ -431,7 +432,7 @@ export async function handleDisableEnableProvider(req, res, currentConfig, provi
         provider.isDisabled = action === 'disable';
         
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] ${action === 'disable' ? 'Disabled' : 'Enabled'} provider ${providerUuid} in ${providerType}`);
 
         // Update provider pool manager if available
@@ -513,7 +514,7 @@ export async function handleResetProviderHealth(req, res, currentConfig, provide
         });
 
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Reset health status for ${resetCount} providers in ${providerType}`);
 
         // Update provider pool manager if available
@@ -598,7 +599,7 @@ export async function handleDeleteUnhealthyProviders(req, res, currentConfig, pr
         }
 
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Deleted ${unhealthyProviders.length} unhealthy providers from ${providerType}`);
 
         // 清理所有不健康提供商的凭证文件和目录
@@ -694,7 +695,7 @@ export async function handleRefreshUnhealthyUuids(req, res, currentConfig, provi
         }
 
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Refreshed UUIDs for ${refreshedProviders.length} unhealthy providers in ${providerType}`);
 
         // Update provider pool manager if available
@@ -853,7 +854,7 @@ export async function handleHealthCheck(req, res, currentConfig, providerPoolMan
         for (const pType in providerPoolManager.providerStatus) {
             providerPools[pType] = providerPoolManager.providerStatus[pType].map(ps => ps.config);
         }
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
 
         const successCount = results.filter(r => r.success === true).length;
         const failCount = results.filter(r => r.success === false).length;
@@ -963,7 +964,7 @@ export async function handleQuickLinkProvider(req, res, currentConfig, providerP
         providerPools[providerType].push(newProvider);
 
         // Save to file
-        writeFileSync(poolsFilePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(poolsFilePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Quick linked config: ${filePath} -> ${providerType}`);
 
         // Update provider pool manager if available
@@ -1046,7 +1047,7 @@ export async function handleRefreshProviderUuid(req, res, currentConfig, provide
         providerPools[providerType][providerIndex].uuid = newUuid;
 
         // Save to file
-        writeFileSync(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        atomicWriteFileSync(filePath, JSON.stringify(providerPools, null, 2));
         logger.info(`[UI API] Refreshed UUID for provider in ${providerType}: ${oldUuid} -> ${newUuid}`);
 
         // Update provider pool manager if available

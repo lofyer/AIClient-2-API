@@ -5,6 +5,7 @@ import logger from '../utils/logger.js';
 import { MODEL_PROVIDER, getProtocolPrefix } from '../utils/common.js';
 import { getProviderModels } from './provider-models.js';
 import axios from 'axios';
+import { atomicModifyJson } from '../utils/atomic-write.js';
 
 /**
  * Manages a pool of API service providers, handling their health and selection.
@@ -1408,44 +1409,30 @@ export class ProviderPoolManager {
         
         try {
             const filePath = this.globalConfig.PROVIDER_POOLS_FILE_PATH || 'configs/provider_pools.json';
-            let currentPools = {};
-            
-            // 一次性读取文件
-            try {
-                const fileContent = await fs.promises.readFile(filePath, 'utf8');
-                currentPools = JSON.parse(fileContent);
-            } catch (readError) {
-                if (readError.code === 'ENOENT') {
-                    this._log('info', 'configs/provider_pools.json does not exist, creating new file.');
-                } else {
-                    throw readError;
-                }
-            }
+            const self = this;
 
-            // 更新所有待保存的 providerType
-            for (const providerType of typesToSave) {
-                if (this.providerStatus[providerType]) {
-                    currentPools[providerType] = this.providerStatus[providerType].map(p => {
-                        // Convert Date objects to ISOString if they exist
-                        const config = { ...p.config };
-                        if (config.lastUsed instanceof Date) {
-                            config.lastUsed = config.lastUsed.toISOString();
-                        }
-                        if (config.lastErrorTime instanceof Date) {
-                            config.lastErrorTime = config.lastErrorTime.toISOString();
-                        }
-                        if (config.lastHealthCheckTime instanceof Date) {
-                            config.lastHealthCheckTime = config.lastHealthCheckTime.toISOString();
-                        }
-                        return config;
-                    });
-                } else {
-                    this._log('warn', `Attempted to save unknown providerType: ${providerType}`);
+            await atomicModifyJson(filePath, (currentPools) => {
+                for (const providerType of typesToSave) {
+                    if (self.providerStatus[providerType]) {
+                        currentPools[providerType] = self.providerStatus[providerType].map(p => {
+                            const config = { ...p.config };
+                            if (config.lastUsed instanceof Date) {
+                                config.lastUsed = config.lastUsed.toISOString();
+                            }
+                            if (config.lastErrorTime instanceof Date) {
+                                config.lastErrorTime = config.lastErrorTime.toISOString();
+                            }
+                            if (config.lastHealthCheckTime instanceof Date) {
+                                config.lastHealthCheckTime = config.lastHealthCheckTime.toISOString();
+                            }
+                            return config;
+                        });
+                    } else {
+                        self._log('warn', `Attempted to save unknown providerType: ${providerType}`);
+                    }
                 }
-            }
-            
-            // 一次性写入文件
-            await fs.promises.writeFile(filePath, JSON.stringify(currentPools, null, 2), 'utf8');
+                return currentPools;
+            });
             this._log('info', `configs/provider_pools.json updated successfully for types: ${typesToSave.join(', ')}`);
         } catch (error) {
             this._log('error', `Failed to write provider_pools.json: ${error.message}`);

@@ -13,6 +13,7 @@ import {
     getFileName,
     formatSystemPath
 } from '../utils/provider-utils.js';
+import { atomicWriteJson } from '../utils/atomic-write.js';
 
 // 存储 ProviderPoolManager 实例
 let providerPoolManager = null;
@@ -75,7 +76,7 @@ export async function autoLinkProviderConfigs(config) {
     if (totalNewProviders > 0) {
         const filePath = config.PROVIDER_POOLS_FILE_PATH || 'configs/provider_pools.json';
         try {
-            await pfs.writeFile(filePath, JSON.stringify(config.providerPools, null, 2), 'utf8');
+            await atomicWriteJson(filePath, config.providerPools);
             logger.info(`[Auto-Link] Added ${totalNewProviders} new config(s) to provider pools:`);
             for (const [displayName, providers] of Object.entries(allNewProviders)) {
                 logger.info(`  ${displayName}: ${providers.length} config(s)`);
