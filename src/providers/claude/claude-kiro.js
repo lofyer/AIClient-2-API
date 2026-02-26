@@ -12,8 +12,7 @@ import { countTokens } from '@anthropic-ai/tokenizer';
 import { configureAxiosProxy } from '../../utils/proxy-utils.js';
 import { isRetryableNetworkError, MODEL_PROVIDER, formatExpiryLog } from '../../utils/common.js';
 import { getProviderPoolManager } from '../../services/service-manager.js';
-import { EventStreamCodec } from '@aws-sdk/eventstream-codec';
-import { toUtf8, fromUtf8 } from '@aws-sdk/util-utf8-node';
+import kiroParserPool from '../../utils/kiro-parser-pool.js';
 
 const KIRO_THINKING = {
     MAX_BUDGET_TOKENS: 24576,
@@ -1800,100 +1799,15 @@ export class KiroApiService {
         }
     }
 
-    /**
-     * 解析 AWS Event Stream 格式，提取所有完整的 JSON 事件
-     * 使用 AWS SDK EventStreamCodec 进行二进制解析
-     * 返回 { events: 解析出的事件数组, remaining: 未处理完的缓冲区 }
-     */
-    parseAwsEventStreamBuffer(buffer) {
-        const events = [];
-        const uint8Buffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-        let offset = 0;
-
-        // 创建 codec 实例并重用以避免阻塞事件循环（EventStreamCodec 初始化非常消耗性能）
-        if (!this._codec) {
-            this._codec = new EventStreamCodec(toUtf8, fromUtf8);
+    // Method extracted to worker threads via src/utils/kiro-parser-pool.js
+    // Retaining signature wrapper for non-worker usage if ever needed or fallbacks
+    async parseAwsEventStreamBufferAsync(buffer) {
+        try {
+            return await kiroParserPool.parseAwsEventStreamBufferAsync(buffer);
+        } catch (e) {
+            logger.error('[Kiro] Worker Pool AWS Stream decode error:', e);
+            return { events: [], remaining: buffer };
         }
-        const codec = this._codec;
-
-        while (offset < uint8Buffer.length) {
-            // AWS Event Stream 消息格式：前4字节是消息总长度（大端序）
-            if (offset + 4 > uint8Buffer.length) break;
-
-            const totalLength = uint8Buffer.readUInt32BE(offset);
-
-            // 检查是否有完整的消息
-            if (totalLength < 16 || offset + totalLength > uint8Buffer.length) break;
-
-            try {
-                // 提取单个消息的字节
-                const messageBytes = uint8Buffer.slice(offset, offset + totalLength);
-                const decoded = codec.decode(messageBytes);
-
-                // 从 headers 获取事件类型
-                const eventType = decoded.headers[':event-type']?.value;
-
-                // 解析 body
-                const bodyStr = new TextDecoder().decode(decoded.body);
-                if (bodyStr) {
-                    const parsed = JSON.parse(bodyStr);
-
-                    // 处理 content 事件
-                    if (parsed.content !== undefined && !parsed.followupPrompt) {
-                        events.push({ type: 'content', data: parsed.content });
-                    }
-                    // 处理结构化工具调用事件 - 开始事件（包含 name 和 toolUseId）
-                    else if (parsed.name && parsed.toolUseId) {
-                        events.push({
-                            type: 'toolUse',
-                            data: {
-                                name: parsed.name,
-                                toolUseId: parsed.toolUseId,
-                                input: parsed.input || '',
-                                stop: parsed.stop || false
-                            }
-                        });
-                    }
-                    // 处理工具调用的 input 续传事件（只有 input 字段）
-                    else if (parsed.input !== undefined && !parsed.name) {
-                        events.push({
-                            type: 'toolUseInput',
-                            data: {
-                                input: parsed.input
-                            }
-                        });
-                    }
-                    // 处理工具调用的结束事件（只有 stop 字段，且不包含 contextUsagePercentage）
-                    else if (parsed.stop !== undefined && parsed.contextUsagePercentage === undefined) {
-                        events.push({
-                            type: 'toolUseStop',
-                            data: {
-                                stop: parsed.stop
-                            }
-                        });
-                    }
-                    // 处理上下文使用百分比事件（最后一条消息）
-                    else if (parsed.contextUsagePercentage !== undefined) {
-                        events.push({
-                            type: 'contextUsage',
-                            data: {
-                                contextUsagePercentage: parsed.contextUsagePercentage
-                            }
-                        });
-                    }
-                }
-
-                offset += totalLength;
-            } catch (e) {
-                // 解码失败，可能是不完整的消息，保留剩余数据
-                logger.debug('[Kiro] Event decode error:', e.message);
-                break;
-            }
-        }
-
-        // 返回未处理的剩余数据（Buffer 类型）
-        const remaining = uint8Buffer.slice(offset);
-        return { events, remaining };
     }
 
     /**
@@ -1944,8 +1858,8 @@ export class KiroApiService {
                 const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
                 buffer = Buffer.concat([buffer, chunkBuffer]);
 
-                // 解析缓冲区中的事件
-                const { events, remaining } = this.parseAwsEventStreamBuffer(buffer);
+                // 解析缓冲区中的事件（异步多线程处理）
+                const { events, remaining } = await this.parseAwsEventStreamBufferAsync(buffer);
                 buffer = remaining;  // remaining 已经是 Buffer 类型
 
                 // yield 所有事件，但过滤连续完全相同的 content 事件（Kiro API 有时会重复发送）
