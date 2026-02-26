@@ -46,10 +46,10 @@ const KIRO_MODELS = getProviderModels('claude-kiro-oauth');
 
 // 完整的模型映射表
 const FULL_MODEL_MAPPING = {
-    "claude-haiku-4-5":"claude-haiku-4.5",
-    "claude-opus-4-5":"claude-opus-4.5",
-    "claude-opus-4-5-20251101":"claude-opus-4.5",
-    "claude-opus-4-6":"claude-opus-4.6",
+    "claude-haiku-4-5": "claude-haiku-4.5",
+    "claude-opus-4-5": "claude-opus-4.5",
+    "claude-opus-4-5-20251101": "claude-opus-4.5",
+    "claude-opus-4-6": "claude-opus-4.6",
     "claude-sonnet-4-5": "CLAUDE_SONNET_4_5_20250929_V1_0",
     "claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0"
 };
@@ -86,7 +86,7 @@ function getSystemRuntimeInfo() {
     const osPlatform = os.platform();
     const osRelease = os.release();
     const nodeVersion = process.version.replace('v', '');
-    
+
     let osName = osPlatform;
     if (osPlatform === 'win32') osName = `windows#${osRelease}`;
     else if (osPlatform === 'darwin') osName = `macos#${osRelease}`;
@@ -111,13 +111,13 @@ function findRealTag(text, tag, startIndex = 0) {
     while (true) {
         const pos = text.indexOf(tag, searchStart);
         if (pos === -1) return -1;
-        
+
         const hasQuoteBefore = isQuoteCharAt(text, pos - 1);
         const hasQuoteAfter = isQuoteCharAt(text, pos + tag.length);
         if (!hasQuoteBefore && !hasQuoteAfter) {
             return pos;
         }
-        
+
         searchStart = pos + 1;
     }
 }
@@ -320,9 +320,10 @@ function parseBracketToolCalls(responseText) {
                 continue; // Skip this one if no closing bracket found
             }
         }
-        
+
         const parsedCall = parseSingleToolCall(toolCallText);
         if (parsedCall) {
+            parsedCall._rawText = toolCallText;
             toolCalls.push(parsedCall);
         }
     }
@@ -382,14 +383,14 @@ export class KiroApiService {
         this.axiosInstance = null; // Initialize later in async method
         this.axiosSocialRefreshInstance = null;
     }
- 
+
     async initialize() {
         if (this.isInitialized) return;
         logger.info('[Kiro] Initializing Kiro API Service...');
         // 注意：V2 读写分离架构下，初始化不再执行同步认证/刷新逻辑
         // 仅执行基础的凭证加载
         await this.loadCredentials();
-        
+
         // 根据当前加载的凭证生成唯一的 Machine ID
         const machineId = generateMachineIdFromConfig({
             uuid: this.uuid,
@@ -412,7 +413,7 @@ export class KiroApiService {
             maxFreeSockets: 5,
             timeout: KIRO_CONSTANTS.AXIOS_TIMEOUT,
         });
-        
+
         const axiosConfig = {
             timeout: KIRO_CONSTANTS.AXIOS_TIMEOUT,
             httpAgent,
@@ -427,15 +428,15 @@ export class KiroApiService {
                 'Connection': 'close'
             },
         };
-        
+
         // 根据 useSystemProxy 配置代理设置
         if (!this.useSystemProxy) {
             axiosConfig.proxy = false;
         }
-        
+
         // 配置自定义代理
         configureAxiosProxy(axiosConfig, this.config, 'claude-kiro-oauth');
-        
+
         this.axiosInstance = axios.create(axiosConfig);
 
         axiosConfig.headers = new Headers();
@@ -444,180 +445,180 @@ export class KiroApiService {
         this.isInitialized = true;
     }
 
-/**
- * 加载凭证信息（不执行刷新）
- */
-async loadCredentials() {
-    // 获取凭证文件路径
-    const tokenFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
+    /**
+     * 加载凭证信息（不执行刷新）
+     */
+    async loadCredentials() {
+        // 获取凭证文件路径
+        const tokenFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
 
-    // Helper to load credentials from a file
-    const loadCredentialsFromFile = async (filePath) => {
+        // Helper to load credentials from a file
+        const loadCredentialsFromFile = async (filePath) => {
+            try {
+                const fileContent = await fs.readFile(filePath, 'utf8');
+                try {
+                    return JSON.parse(fileContent);
+                } catch (parseError) {
+                    logger.warn('[Kiro Auth] JSON parse failed, attempting repair...');
+                    try {
+                        const repaired = repairJson(fileContent);
+                        const result = JSON.parse(repaired);
+                        logger.info('[Kiro Auth] JSON repair successful');
+                        return result;
+                    } catch (repairError) {
+                        logger.warn('[Kiro Auth] JSON repair failed, attempting field extraction...');
+                        // 尝试从损坏的 JSON 中提取关键字段
+                        const extracted = extractCredentialsFromCorruptedJson(fileContent);
+                        if (extracted) {
+                            logger.info('[Kiro Auth] Field extraction successful, credentials recovered');
+                            return extracted;
+                        }
+                        logger.error('[Kiro Auth] All recovery methods failed:', repairError.message);
+                        return null;
+                    }
+                }
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    logger.debug(`[Kiro Auth] Credential file not found: ${filePath}`);
+                } else {
+                    logger.warn(`[Kiro Auth] Failed to read credential file ${filePath}: ${error.message}`);
+                }
+                return null;
+            }
+        };
+
+        try {
+            let mergedCredentials = {};
+
+            // Priority 1: Load from Base64 credentials if available
+            if (this.base64Creds) {
+                Object.assign(mergedCredentials, this.base64Creds);
+                logger.info('[Kiro Auth] Successfully loaded credentials from Base64 (constructor).');
+                this.base64Creds = null;
+            }
+
+            // 从文件加载
+            const targetFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
+            const dirPath = path.dirname(targetFilePath);
+            const targetFileName = path.basename(targetFilePath);
+
+            logger.debug(`[Kiro Auth] Loading credentials from directory: ${dirPath}`);
+
+            try {
+                const targetCredentials = await loadCredentialsFromFile(targetFilePath);
+                if (targetCredentials) {
+                    Object.assign(mergedCredentials, targetCredentials);
+                    logger.info(`[Kiro Auth] Successfully loaded OAuth credentials from ${targetFilePath}`);
+                }
+
+                const files = await fs.readdir(dirPath);
+                for (const file of files) {
+                    if (file.endsWith('.json') && file !== targetFileName) {
+                        const filePath = path.join(dirPath, file);
+                        const credentials = await loadCredentialsFromFile(filePath);
+                        if (credentials) {
+                            credentials.expiresAt = mergedCredentials.expiresAt;
+                            Object.assign(mergedCredentials, credentials);
+                            logger.debug(`[Kiro Auth] Loaded Client credentials from ${file}`);
+                        }
+                    }
+                }
+            } catch (error) {
+                logger.warn(`[Kiro Auth] Error loading credentials from directory ${dirPath}: ${error.message}`);
+            }
+
+            // Apply loaded credentials
+            this.accessToken = this.accessToken || mergedCredentials.accessToken;
+            this.refreshToken = this.refreshToken || mergedCredentials.refreshToken;
+            this.clientId = this.clientId || mergedCredentials.clientId;
+            this.clientSecret = this.clientSecret || mergedCredentials.clientSecret;
+            this.authMethod = this.authMethod || mergedCredentials.authMethod;
+            this.expiresAt = this.expiresAt || mergedCredentials.expiresAt;
+            this.profileArn = this.profileArn || mergedCredentials.profileArn;
+            this.region = this.region || mergedCredentials.region;
+            this.idcRegion = this.idcRegion || mergedCredentials.idcRegion;
+
+            if (!this.region) {
+                logger.warn('[Kiro Auth] Region not found in credentials. Using default region us-east-1 for URLs.');
+                this.region = 'us-east-1';
+            }
+
+            // idcRegion 用于 REFRESH_IDC_URL，如果未设置则使用 region
+            if (!this.idcRegion) {
+                this.idcRegion = this.region;
+            }
+
+            this.refreshUrl = (this.config.KIRO_REFRESH_URL || KIRO_CONSTANTS.REFRESH_URL).replace("{{region}}", this.region);
+            this.refreshIDCUrl = (this.config.KIRO_REFRESH_IDC_URL || KIRO_CONSTANTS.REFRESH_IDC_URL).replace("{{region}}", this.idcRegion);
+            this.baseUrl = (this.config.KIRO_BASE_URL || KIRO_CONSTANTS.BASE_URL).replace("{{region}}", this.region);
+        } catch (error) {
+            logger.warn(`[Kiro Auth] Error during credential loading: ${error.message}`);
+        }
+    }
+
+    async initializeAuth(forceRefresh = false) {
+        if (this.accessToken && !forceRefresh) {
+            logger.debug('[Kiro Auth] Access token already available and not forced refresh.');
+            return;
+        }
+
+        // 首先执行基础凭证加载
+        await this.loadCredentials();
+
+        // 只有在明确要求强制刷新，或者 AccessToken 确实缺失时，才执行刷新
+        // 注意：在 V2 架构下，此方法主要由 PoolManager 的后台队列调用
+        if (forceRefresh || (!this.accessToken && this.refreshToken)) {
+            if (!this.refreshToken) {
+                throw new Error('No refresh token available to refresh access token.');
+            }
+
+            const tokenFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
+            await this._doTokenRefresh(this.saveCredentialsToFile.bind(this), tokenFilePath);
+        }
+
+        if (!this.accessToken) {
+            throw new Error('No access token available after initialization and refresh attempts.');
+        }
+    }
+
+    /**
+     * Helper to save credentials
+     */
+    async saveCredentialsToFile(filePath, newData) {
+        let existingData = {};
         try {
             const fileContent = await fs.readFile(filePath, 'utf8');
             try {
-                return JSON.parse(fileContent);
+                existingData = JSON.parse(fileContent);
             } catch (parseError) {
                 logger.warn('[Kiro Auth] JSON parse failed, attempting repair...');
                 try {
                     const repaired = repairJson(fileContent);
-                    const result = JSON.parse(repaired);
+                    existingData = JSON.parse(repaired);
                     logger.info('[Kiro Auth] JSON repair successful');
-                    return result;
                 } catch (repairError) {
                     logger.warn('[Kiro Auth] JSON repair failed, attempting field extraction...');
-                    // 尝试从损坏的 JSON 中提取关键字段
                     const extracted = extractCredentialsFromCorruptedJson(fileContent);
                     if (extracted) {
-                        logger.info('[Kiro Auth] Field extraction successful, credentials recovered');
-                        return extracted;
+                        existingData = extracted;
+                        logger.info('[Kiro Auth] Field extraction successful');
+                    } else {
+                        logger.error('[Kiro Auth] All recovery methods failed:', repairError.message);
+                        existingData = {};
                     }
-                    logger.error('[Kiro Auth] All recovery methods failed:', repairError.message);
-                    return null;
                 }
             }
-        } catch (error) {
-            if (error.code === 'ENOENT') {
-                logger.debug(`[Kiro Auth] Credential file not found: ${filePath}`);
+        } catch (readError) {
+            if (readError.code === 'ENOENT') {
+                logger.debug(`[Kiro Auth] Token file not found, creating new one: ${filePath}`);
             } else {
-                logger.warn(`[Kiro Auth] Failed to read credential file ${filePath}: ${error.message}`);
+                logger.warn(`[Kiro Auth] Could not read existing token file ${filePath}: ${readError.message}`);
             }
-            return null;
         }
+        const mergedData = { ...existingData, ...newData };
+        await fs.writeFile(filePath, JSON.stringify(mergedData, null, 2), 'utf8');
+        logger.info(`[Kiro Auth] Updated token file: ${filePath}`);
     };
-
-    try {
-        let mergedCredentials = {};
-
-        // Priority 1: Load from Base64 credentials if available
-        if (this.base64Creds) {
-            Object.assign(mergedCredentials, this.base64Creds);
-            logger.info('[Kiro Auth] Successfully loaded credentials from Base64 (constructor).');
-            this.base64Creds = null;
-        }
-
-        // 从文件加载
-        const targetFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
-        const dirPath = path.dirname(targetFilePath);
-        const targetFileName = path.basename(targetFilePath);
-
-        logger.debug(`[Kiro Auth] Loading credentials from directory: ${dirPath}`);
-
-        try {
-            const targetCredentials = await loadCredentialsFromFile(targetFilePath);
-            if (targetCredentials) {
-                Object.assign(mergedCredentials, targetCredentials);
-                logger.info(`[Kiro Auth] Successfully loaded OAuth credentials from ${targetFilePath}`);
-            }
-
-            const files = await fs.readdir(dirPath);
-            for (const file of files) {
-                if (file.endsWith('.json') && file !== targetFileName) {
-                    const filePath = path.join(dirPath, file);
-                    const credentials = await loadCredentialsFromFile(filePath);
-                    if (credentials) {
-                        credentials.expiresAt = mergedCredentials.expiresAt;
-                        Object.assign(mergedCredentials, credentials);
-                        logger.debug(`[Kiro Auth] Loaded Client credentials from ${file}`);
-                    }
-                }
-            }
-        } catch (error) {
-            logger.warn(`[Kiro Auth] Error loading credentials from directory ${dirPath}: ${error.message}`);
-        }
-
-        // Apply loaded credentials
-        this.accessToken = this.accessToken || mergedCredentials.accessToken;
-        this.refreshToken = this.refreshToken || mergedCredentials.refreshToken;
-        this.clientId = this.clientId || mergedCredentials.clientId;
-        this.clientSecret = this.clientSecret || mergedCredentials.clientSecret;
-        this.authMethod = this.authMethod || mergedCredentials.authMethod;
-        this.expiresAt = this.expiresAt || mergedCredentials.expiresAt;
-        this.profileArn = this.profileArn || mergedCredentials.profileArn;
-        this.region = this.region || mergedCredentials.region;
-        this.idcRegion = this.idcRegion || mergedCredentials.idcRegion;
-
-        if (!this.region) {
-            logger.warn('[Kiro Auth] Region not found in credentials. Using default region us-east-1 for URLs.');
-            this.region = 'us-east-1';
-        }
-
-        // idcRegion 用于 REFRESH_IDC_URL，如果未设置则使用 region
-        if (!this.idcRegion) {
-            this.idcRegion = this.region;
-        }
-
-        this.refreshUrl = (this.config.KIRO_REFRESH_URL || KIRO_CONSTANTS.REFRESH_URL).replace("{{region}}", this.region);
-        this.refreshIDCUrl = (this.config.KIRO_REFRESH_IDC_URL || KIRO_CONSTANTS.REFRESH_IDC_URL).replace("{{region}}", this.idcRegion);
-        this.baseUrl = (this.config.KIRO_BASE_URL || KIRO_CONSTANTS.BASE_URL).replace("{{region}}", this.region);
-    } catch (error) {
-        logger.warn(`[Kiro Auth] Error during credential loading: ${error.message}`);
-    }
-}
-
-async initializeAuth(forceRefresh = false) {
-    if (this.accessToken && !forceRefresh) {
-        logger.debug('[Kiro Auth] Access token already available and not forced refresh.');
-        return;
-    }
-
-    // 首先执行基础凭证加载
-    await this.loadCredentials();
-
-    // 只有在明确要求强制刷新，或者 AccessToken 确实缺失时，才执行刷新
-    // 注意：在 V2 架构下，此方法主要由 PoolManager 的后台队列调用
-    if (forceRefresh || (!this.accessToken && this.refreshToken)) {
-        if (!this.refreshToken) {
-            throw new Error('No refresh token available to refresh access token.');
-        }
-
-        const tokenFilePath = this.credsFilePath || path.join(this.credPath, KIRO_AUTH_TOKEN_FILE);
-        await this._doTokenRefresh(this.saveCredentialsToFile.bind(this), tokenFilePath);
-    }
-
-    if (!this.accessToken) {
-        throw new Error('No access token available after initialization and refresh attempts.');
-    }
-}
-
-/**
- * Helper to save credentials
- */
-async saveCredentialsToFile(filePath, newData) {
-    let existingData = {};
-    try {
-        const fileContent = await fs.readFile(filePath, 'utf8');
-        try {
-            existingData = JSON.parse(fileContent);
-        } catch (parseError) {
-            logger.warn('[Kiro Auth] JSON parse failed, attempting repair...');
-            try {
-                const repaired = repairJson(fileContent);
-                existingData = JSON.parse(repaired);
-                logger.info('[Kiro Auth] JSON repair successful');
-            } catch (repairError) {
-                logger.warn('[Kiro Auth] JSON repair failed, attempting field extraction...');
-                const extracted = extractCredentialsFromCorruptedJson(fileContent);
-                if (extracted) {
-                    existingData = extracted;
-                    logger.info('[Kiro Auth] Field extraction successful');
-                } else {
-                    logger.error('[Kiro Auth] All recovery methods failed:', repairError.message);
-                    existingData = {};
-                }
-            }
-        }
-    } catch (readError) {
-        if (readError.code === 'ENOENT') {
-            logger.debug(`[Kiro Auth] Token file not found, creating new one: ${filePath}`);
-        } else {
-            logger.warn(`[Kiro Auth] Could not read existing token file ${filePath}: ${readError.message}`);
-        }
-    }
-    const mergedData = { ...existingData, ...newData };
-    await fs.writeFile(filePath, JSON.stringify(mergedData, null, 2), 'utf8');
-    logger.info(`[Kiro Auth] Updated token file: ${filePath}`);
-};
 
     /**
      * 执行实际的 token 刷新操作（内部方法）
@@ -696,7 +697,7 @@ async saveCredentialsToFile(filePath, newData) {
      * Extract text content from OpenAI message format
      */
     getContentText(message) {
-        if(message==null){
+        if (message == null) {
             return "";
         }
         if (Array.isArray(message)) {
@@ -746,15 +747,15 @@ async saveCredentialsToFile(filePath, newData) {
     _toClaudeContentBlocksFromKiroText(content) {
         const raw = content ?? '';
         if (!raw) return [];
-        
+
         const startPos = findRealTag(raw, KIRO_THINKING.START_TAG);
         if (startPos === -1) {
             return [{ type: "text", text: raw }];
         }
-        
+
         const before = raw.slice(0, startPos);
         let rest = raw.slice(startPos + KIRO_THINKING.START_TAG.length);
-        
+
         const endPosInRest = findRealTag(rest, KIRO_THINKING.END_TAG);
         let thinking = '';
         let after = '';
@@ -764,9 +765,9 @@ async saveCredentialsToFile(filePath, newData) {
             thinking = rest.slice(0, endPosInRest);
             after = rest.slice(endPosInRest + KIRO_THINKING.END_TAG.length);
         }
-        
+
         if (after.startsWith('\n\n')) after = after.slice(2);
-        
+
         const blocks = [];
         if (before) blocks.push({ type: "text", text: before });
         blocks.push({ type: "thinking", thinking });
@@ -780,15 +781,15 @@ async saveCredentialsToFile(filePath, newData) {
      */
     cleanIncompleteToolCalls(messages) {
         if (!messages || messages.length === 0) return messages;
-        
+
         // 收集所有 tool_use 的 ID
         const toolUseIds = new Set();
         // 收集所有 tool_result 对应的 tool_use_id
         const toolResultIds = new Set();
-        
+
         for (const msg of messages) {
             if (!msg.content || !Array.isArray(msg.content)) continue;
-            
+
             for (const part of msg.content) {
                 if (part.type === 'tool_use' && part.id) {
                     toolUseIds.add(part.id);
@@ -797,7 +798,7 @@ async saveCredentialsToFile(filePath, newData) {
                 }
             }
         }
-        
+
         // 找出没有对应 tool_result 的 tool_use ID
         const orphanedToolUseIds = new Set();
         for (const id of toolUseIds) {
@@ -805,7 +806,7 @@ async saveCredentialsToFile(filePath, newData) {
                 orphanedToolUseIds.add(id);
             }
         }
-        
+
         // 找出没有对应 tool_use 的 tool_result ID
         const orphanedToolResultIds = new Set();
         for (const id of toolResultIds) {
@@ -813,13 +814,13 @@ async saveCredentialsToFile(filePath, newData) {
                 orphanedToolResultIds.add(id);
             }
         }
-        
+
         if (orphanedToolUseIds.size === 0 && orphanedToolResultIds.size === 0) {
             return messages; // 没有孤立的工具调用，直接返回
         }
-        
+
         console.log(`[Kiro] Cleaning incomplete tool calls: ${orphanedToolUseIds.size} orphaned tool_use, ${orphanedToolResultIds.size} orphaned tool_result`);
-        
+
         // 过滤掉孤立的工具调用
         const cleanedMessages = [];
         for (const msg of messages) {
@@ -827,7 +828,7 @@ async saveCredentialsToFile(filePath, newData) {
                 cleanedMessages.push(msg);
                 continue;
             }
-            
+
             const cleanedContent = msg.content.filter(part => {
                 if (part.type === 'tool_use' && orphanedToolUseIds.has(part.id)) {
                     console.log(`[Kiro] Removing orphaned tool_use: ${part.name} (${part.id})`);
@@ -839,7 +840,7 @@ async saveCredentialsToFile(filePath, newData) {
                 }
                 return true;
             });
-            
+
             // 如果消息内容被清空，检查是否需要保留
             if (cleanedContent.length === 0) {
                 // 如果是 assistant 消息且内容被完全清空，添加一个占位文本
@@ -852,13 +853,13 @@ async saveCredentialsToFile(filePath, newData) {
                 // user 消息如果被清空则跳过
                 continue;
             }
-            
+
             cleanedMessages.push({
                 ...msg,
                 content: cleanedContent
             });
         }
-        
+
         return cleanedMessages;
     }
 
@@ -867,15 +868,15 @@ async saveCredentialsToFile(filePath, newData) {
      */
     async buildCodewhispererRequest(messages, model, tools = null, inSystemPrompt = null, thinking = null) {
         const conversationId = uuidv4();
-        
+
         let systemPrompt = this.getContentText(inSystemPrompt);
         let processedMessages = messages;
-        
+
         // 上下文截断：限制请求体大小，避免 400 错误
         // Kiro API 对请求体大小有硬性限制，需要按字节数截断而不是 token 数
         const MAX_REQUEST_SIZE_KB = (this.config && this.config.KIRO_MAX_REQUEST_SIZE_KB) || 240; // 默认 240KB
         const MAX_REQUEST_SIZE = MAX_REQUEST_SIZE_KB * 1024;
-        
+
         // 估算每条消息的字节大小
         const estimateMessageSize = (msg) => {
             let size = 0;
@@ -894,39 +895,39 @@ async saveCredentialsToFile(filePath, newData) {
             }
             return size;
         };
-        
+
         let totalSize = systemPrompt ? systemPrompt.length : 0;
         console.log(`[Kiro] Max request size: ${MAX_REQUEST_SIZE_KB}KB, messages count: ${processedMessages.length}`);
-        
+
         // 从后往前计算大小，保留最近的消息
         const messagesToKeep = [];
         for (let i = processedMessages.length - 1; i >= 0; i--) {
             const msg = processedMessages[i];
             const msgSize = estimateMessageSize(msg);
-            
+
             if (totalSize + msgSize > MAX_REQUEST_SIZE && messagesToKeep.length > 0) {
                 console.log(`[Kiro] Size truncation: keeping ${messagesToKeep.length} messages, dropping ${i + 1} older messages (size would exceed ${MAX_REQUEST_SIZE_KB}KB)`);
                 break;
             }
-            
+
             totalSize += msgSize;
             messagesToKeep.unshift(msg);
         }
-        
+
         console.log(`[Kiro] Total estimated size: ${Math.round(totalSize / 1024)}KB`);
-        
+
         // 确保至少保留最后一条消息
         if (messagesToKeep.length === 0 && processedMessages.length > 0) {
             messagesToKeep.push(processedMessages[processedMessages.length - 1]);
             console.log('[Kiro] Context truncation: keeping only the last message due to size limit');
         }
-        
+
         processedMessages = messagesToKeep;
-        
+
         // 清理不完整的工具调用：确保每个 tool_use 都有对应的 tool_result
         // Kiro API 要求工具调用必须完整，否则会返回 "Improperly formed request" 错误
         processedMessages = this.cleanIncompleteToolCalls(processedMessages);
-        
+
         // 确保第一条消息是 user 类型（Kiro API 要求）
         // 如果截断后第一条是 assistant，需要移除它
         while (processedMessages.length > 0 && processedMessages[0].role === 'assistant') {
@@ -960,12 +961,12 @@ async saveCredentialsToFile(filePath, newData) {
         const mergedMessages = [];
         for (let i = 0; i < processedMessages.length; i++) {
             const currentMsg = processedMessages[i];
-            
+
             if (mergedMessages.length === 0) {
                 mergedMessages.push(currentMsg);
             } else {
                 const lastMsg = mergedMessages[mergedMessages.length - 1];
-                
+
                 // 判断当前消息和上一条消息是否为相同 role
                 if (currentMsg.role === lastMsg.role) {
                     // 合并消息内容
@@ -988,13 +989,13 @@ async saveCredentialsToFile(filePath, newData) {
                 }
             }
         }
-        
+
         // 用合并后的消息替换原消息数组
         processedMessages.length = 0;
         processedMessages.push(...mergedMessages);
 
         const codewhispererModel = MODEL_MAPPING[model] || MODEL_MAPPING[this.modelName];
-        
+
         // 动态压缩 tools（保留全部工具）
         let toolsContext = {};
         if (tools && Array.isArray(tools) && tools.length > 0) {
@@ -1004,13 +1005,13 @@ async saveCredentialsToFile(filePath, newData) {
             const kiroTools = tools.map(tool => {
                 let desc = tool.description || "";
                 const originalLength = desc.length;
-                
+
                 if (desc.length > MAX_DESCRIPTION_LENGTH) {
                     desc = desc.substring(0, MAX_DESCRIPTION_LENGTH) + "...";
                     truncatedCount++;
                     logger.info(`[Kiro] Truncated tool '${tool.name}' description: ${originalLength} -> ${desc.length} chars`);
                 }
-                
+
                 return {
                     toolSpecification: {
                         name: tool.name,
@@ -1021,7 +1022,7 @@ async saveCredentialsToFile(filePath, newData) {
                     }
                 };
             });
-            
+
             if (truncatedCount > 0) {
                 logger.info(`[Kiro] Truncated ${truncatedCount} tool description(s) to max ${MAX_DESCRIPTION_LENGTH} chars`);
             }
@@ -1059,14 +1060,14 @@ async saveCredentialsToFile(filePath, newData) {
         }
 
         // 保留最近 5 条历史消息中的图片
-        const keepImageThreshold = 5;        
+        const keepImageThreshold = 5;
         for (let i = startIndex; i < processedMessages.length - 1; i++) {
             const message = processedMessages[i];
             // 计算当前消息距离最后一条消息的位置（从后往前数）
             const distanceFromEnd = (processedMessages.length - 1) - i;
             // 如果距离末尾不超过 5 条，则保留图片
             const shouldKeepImages = distanceFromEnd <= keepImageThreshold;
-            
+
             if (message.role === 'user') {
                 let userInputMessage = {
                     content: '',
@@ -1076,7 +1077,7 @@ async saveCredentialsToFile(filePath, newData) {
                 let imageCount = 0;
                 let toolResults = [];
                 let images = [];
-                
+
                 if (Array.isArray(message.content)) {
                     for (const part of message.content) {
                         if (part.type === 'text') {
@@ -1105,13 +1106,13 @@ async saveCredentialsToFile(filePath, newData) {
                 } else {
                     userInputMessage.content = this.getContentText(message);
                 }
-                
+
                 // 如果有保留的图片，添加到消息中
                 if (images.length > 0) {
                     userInputMessage.images = images;
                     logger.info(`[Kiro] Kept ${images.length} image(s) in recent history message (distance from end: ${distanceFromEnd})`);
                 }
-                
+
                 // 如果有被替换的图片，添加占位符说明
                 if (imageCount > 0) {
                     const imagePlaceholder = `[此消息包含 ${imageCount} 张图片，已在历史记录中省略]`;
@@ -1120,7 +1121,7 @@ async saveCredentialsToFile(filePath, newData) {
                         : imagePlaceholder;
                     logger.info(`[Kiro] Replaced ${imageCount} image(s) with placeholder in old history message (distance from end: ${distanceFromEnd})`);
                 }
-                
+
                 if (toolResults.length > 0) {
                     // 去重 toolResults - Kiro API 不接受重复的 toolUseId
                     const uniqueToolResults = [];
@@ -1133,7 +1134,7 @@ async saveCredentialsToFile(filePath, newData) {
                     }
                     userInputMessage.userInputMessageContext = { toolResults: uniqueToolResults };
                 }
-                
+
                 history.push({ userInputMessage });
             } else if (message.role === 'assistant') {
                 let assistantResponseMessage = {
@@ -1141,7 +1142,7 @@ async saveCredentialsToFile(filePath, newData) {
                 };
                 let toolUses = [];
                 let thinkingText = '';
-                
+
                 if (Array.isArray(message.content)) {
                     for (const part of message.content) {
                         if (part.type === 'text') {
@@ -1159,7 +1160,7 @@ async saveCredentialsToFile(filePath, newData) {
                 } else {
                     assistantResponseMessage.content = this.getContentText(message);
                 }
-                
+
                 if (thinkingText) {
                     assistantResponseMessage.content = assistantResponseMessage.content
                         ? `${KIRO_THINKING.START_TAG}${thinkingText}${KIRO_THINKING.END_TAG}\n\n${assistantResponseMessage.content}`
@@ -1170,7 +1171,7 @@ async saveCredentialsToFile(filePath, newData) {
                 if (toolUses.length > 0) {
                     assistantResponseMessage.toolUses = toolUses;
                 }
-                
+
                 history.push({ assistantResponseMessage });
             }
         }
@@ -1186,7 +1187,7 @@ async saveCredentialsToFile(filePath, newData) {
         // 因为 CodeWhisperer API 的 currentMessage 必须是 userInputMessage 类型
         if (currentMessage.role === 'assistant') {
             logger.info('[Kiro] Last message is assistant, moving it to history and creating user currentMessage');
-            
+
             // 构建 assistant 消息并加入 history
             let assistantResponseMessage = {
                 content: '',
@@ -1219,7 +1220,7 @@ async saveCredentialsToFile(filePath, newData) {
                 delete assistantResponseMessage.toolUses;
             }
             history.push({ assistantResponseMessage });
-            
+
             // 设置 currentContent 为 "Continue"，因为我们需要一个 user 消息来触发 AI 继续
             currentContent = 'Continue';
         } else {
@@ -1237,7 +1238,7 @@ async saveCredentialsToFile(filePath, newData) {
                     });
                 }
             }
-            
+
             // 处理 user 消息
             if (Array.isArray(currentMessage.content)) {
                 for (const part of currentMessage.content) {
@@ -1281,7 +1282,7 @@ async saveCredentialsToFile(filePath, newData) {
                 currentMessage: {} // Will be populated as userInputMessage
             }
         };
-        
+
         // 只有当 history 非空时才添加（API 可能不接受空数组）
         if (history.length > 0) {
             request.conversationState.history = history;
@@ -1357,17 +1358,26 @@ async saveCredentialsToFile(filePath, newData) {
         let currentToolCallDict = null;
         // logger.info(`rawStr=${rawStr}`);
 
-        // 改进的 SSE 事件解析：匹配 :message-typeevent 后面的 JSON 数据
-        // 使用更精确的正则来匹配 SSE 格式的事件
-        const sseEventRegex = /:message-typeevent(\{[^]*?(?=:event-type|$))/g;
-        const legacyEventRegex = /event(\{.*?(?=event\{|$))/gs;
-        
+        let matches = [];
+
         // 首先尝试使用 SSE 格式解析
-        let matches = [...rawStr.matchAll(sseEventRegex)];
-        
+        if (rawStr.includes(':message-typeevent{')) {
+            const parts = rawStr.split(':message-typeevent');
+            for (let i = 1; i < parts.length; i++) {
+                const part = parts[i];
+                if (part.startsWith('{')) {
+                    const nextEventPos = part.indexOf(':event-type');
+                    matches.push([, nextEventPos !== -1 ? part.substring(0, nextEventPos) : part]);
+                }
+            }
+        }
+
         // 如果 SSE 格式没有匹配到，回退到旧的格式
-        if (matches.length === 0) {
-            matches = [...rawStr.matchAll(legacyEventRegex)];
+        if (matches.length === 0 && rawStr.includes('event{')) {
+            const parts = rawStr.split('event{');
+            for (let i = 1; i < parts.length; i++) {
+                matches.push([, '{' + parts[i]]);
+            }
         }
 
         for (const match of matches) {
@@ -1425,7 +1435,7 @@ async saveCredentialsToFile(filePath, newData) {
                 }
             }
         }
-        
+
         // 如果还有未完成的工具调用，添加到列表中
         if (currentToolCallDict) {
             toolCalls.push(currentToolCallDict);
@@ -1437,10 +1447,14 @@ async saveCredentialsToFile(filePath, newData) {
             toolCalls.push(...bracketToolCalls);
             // 从响应文本中移除工具调用文本
             for (const tc of bracketToolCalls) {
-                const funcName = tc.function.name;
-                const escapedName = funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const pattern = new RegExp(`\\[Called\\s+${escapedName}\\s+with\\s+args:\\s*\\{[^}]*(?:\\{[^}]*\\}[^}]*)*\\}\\]`, 'gs');
-                fullContent = fullContent.replace(pattern, '');
+                if (tc._rawText) {
+                    fullContent = fullContent.split(tc._rawText).join('');
+                } else {
+                    const funcName = tc.function.name;
+                    const escapedName = funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const pattern = new RegExp(`\\[Called\\s+${escapedName}\\s+with\\s+args:[^\\]]*\\]`, 'gs');
+                    fullContent = fullContent.replace(pattern, '');
+                }
             }
             fullContent = fullContent.replace(/\s+/g, ' ').trim();
         }
@@ -1448,7 +1462,7 @@ async saveCredentialsToFile(filePath, newData) {
         const uniqueToolCalls = deduplicateToolCalls(toolCalls);
         return { content: fullContent || '', toolCalls: uniqueToolCalls };
     }
- 
+
 
     /**
      * 调用 API 并处理错误重试
@@ -1467,7 +1481,7 @@ async saveCredentialsToFile(filePath, newData) {
                 content: content.parts?.map(part => part.text).join('') || ''
             }));
         }
-        
+
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             throw new Error('No messages found in request body');
         }
@@ -1489,10 +1503,10 @@ async saveCredentialsToFile(filePath, newData) {
             const status = error.response?.status;
             const errorCode = error.code;
             const errorMessage = error.message || '';
-            
+
             // 检查是否为可重试的网络错误
             const isNetworkError = isRetryableNetworkError(error);
-            
+
             // Handle 400 (Bad Request) - client error, don't count against credential
             if (status === 400) {
                 logger.warn(`[Kiro] Received 400 (Bad Request): ${errorMessage}`);
@@ -1504,14 +1518,14 @@ async saveCredentialsToFile(filePath, newData) {
             // Handle 401 (Unauthorized) - refresh UUID first, then try to refresh token
             if (status === 401 && !isRetry) {
                 logger.info('[Kiro] Received 401. Refreshing UUID and triggering background refresh via PoolManager...');
-                
+
                 // 1. 先刷新 UUID
                 const newUuid = this._refreshUuid();
                 if (newUuid) {
                     logger.info(`[Kiro] UUID refreshed: ${this.uuid} -> ${newUuid}`);
                     this.uuid = newUuid;
                 }
-                
+
                 // 标记当前凭证为不健康（会自动进入刷新队列）
                 this._markCredentialNeedRefresh('401 Unauthorized - Triggering auto-refresh');
                 // Mark error for credential switch without recording error count
@@ -1519,7 +1533,7 @@ async saveCredentialsToFile(filePath, newData) {
                 error.skipErrorCount = true;
                 throw error;
             }
-    
+
             // Handle 402 (Payment Required / Quota Exceeded) - verify usage and mark as unhealthy with recovery time
             if (status === 402 && !isRetry) {
                 await this._handle402Error(error, 'callApi');
@@ -1536,7 +1550,7 @@ async saveCredentialsToFile(filePath, newData) {
                 }
                 throw error;
             }
-            
+
             // Handle 429 (Too Many Requests) - wait baseDelay then switch credential
             if (status === 429) {
                 logger.info(`[Kiro] Received 429 (Too Many Requests). Waiting ${baseDelay}ms before switching credential...`);
@@ -1615,7 +1629,7 @@ async saveCredentialsToFile(filePath, newData) {
             return false;
         }
     }
-    
+
     /**
      * Helper method to mark the current credential as unhealthy
      * @param {string} reason - The reason for marking unhealthy
@@ -1692,7 +1706,7 @@ async saveCredentialsToFile(filePath, newData) {
             // Verify usage limits to confirm quota exhaustion
             const usageLimits = await this.getUsageLimits();
             const isQuotaExhausted = usageLimits?.usedCount >= usageLimits?.limitCount;
-            
+
             logger.info(`[Kiro] Quota confirmed exhausted: ${usageLimits?.usedCount}/${usageLimits?.limitCount}`);
             // Calculate recovery time: 1st day of next month at 00:00:00 UTC
             const nextMonth = this._getNextMonthFirstDay();
@@ -1738,14 +1752,18 @@ async saveCredentialsToFile(filePath, newData) {
         // We re-clean here with all unique tool calls to be certain.
         if (uniqueToolCalls.length > 0) {
             for (const tc of uniqueToolCalls) {
-                const funcName = tc.function.name;
-                const escapedName = funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const pattern = new RegExp(`\\[Called\\s+${escapedName}\\s+with\\s+args:\\s*\\{[^}]*(?:\\{[^}]*\\}[^}]*)*\\}\\]`, 'gs');
-                fullResponseText = fullResponseText.replace(pattern, '');
+                if (tc._rawText) {
+                    fullResponseText = fullResponseText.split(tc._rawText).join('');
+                } else {
+                    const funcName = tc.function.name;
+                    const escapedName = funcName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const pattern = new RegExp(`\\[Called\\s+${escapedName}\\s+with\\s+args:[^\\]]*\\]`, 'gs');
+                    fullResponseText = fullResponseText.replace(pattern, '');
+                }
             }
             fullResponseText = fullResponseText.replace(/\s+/g, ' ').trim();
         }
-        
+
         //logger.info(`[Kiro] Final response text after tool call cleanup: ${fullResponseText}`);
         //logger.info(`[Kiro] Final tool calls after deduplication: ${JSON.stringify(uniqueToolCalls)}`);
         return { responseText: fullResponseText, toolCalls: uniqueToolCalls };
@@ -1758,19 +1776,19 @@ async saveCredentialsToFile(filePath, newData) {
         if (requestBody._monitorRequestId) {
             this.config._monitorRequestId = requestBody._monitorRequestId;
         }
-        
+
         // 检查 token 是否即将过期，如果是则推送到刷新队列
         if (this.isExpiryDateNear()) {
             logger.info('[Kiro] Token is near expiry, marking credential as need refresh...');
             this._markCredentialNeedRefresh('Token near expiry in generateContent');
         }
-        
+
         const finalModel = MODEL_MAPPING[model] ? model : this.modelName;
         logger.info(`[Kiro] Calling generateContent with model: ${finalModel}`);
-        
+
         // Estimate input tokens before making the API call
         const inputTokens = this.estimateInputTokens(requestBody);
-        
+
         const response = await this.callApi('', finalModel, requestBody);
 
         try {
@@ -1791,40 +1809,43 @@ async saveCredentialsToFile(filePath, newData) {
         const events = [];
         const uint8Buffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
         let offset = 0;
-        
-        // 创建 codec 实例
-        const codec = new EventStreamCodec(toUtf8, fromUtf8);
-        
+
+        // 创建 codec 实例并重用以避免阻塞事件循环（EventStreamCodec 初始化非常消耗性能）
+        if (!this._codec) {
+            this._codec = new EventStreamCodec(toUtf8, fromUtf8);
+        }
+        const codec = this._codec;
+
         while (offset < uint8Buffer.length) {
             // AWS Event Stream 消息格式：前4字节是消息总长度（大端序）
             if (offset + 4 > uint8Buffer.length) break;
-            
+
             const totalLength = uint8Buffer.readUInt32BE(offset);
-            
+
             // 检查是否有完整的消息
             if (totalLength < 16 || offset + totalLength > uint8Buffer.length) break;
-            
+
             try {
                 // 提取单个消息的字节
                 const messageBytes = uint8Buffer.slice(offset, offset + totalLength);
                 const decoded = codec.decode(messageBytes);
-                
+
                 // 从 headers 获取事件类型
                 const eventType = decoded.headers[':event-type']?.value;
-                
+
                 // 解析 body
                 const bodyStr = new TextDecoder().decode(decoded.body);
                 if (bodyStr) {
                     const parsed = JSON.parse(bodyStr);
-                    
+
                     // 处理 content 事件
                     if (parsed.content !== undefined && !parsed.followupPrompt) {
                         events.push({ type: 'content', data: parsed.content });
                     }
                     // 处理结构化工具调用事件 - 开始事件（包含 name 和 toolUseId）
                     else if (parsed.name && parsed.toolUseId) {
-                        events.push({ 
-                            type: 'toolUse', 
+                        events.push({
+                            type: 'toolUse',
                             data: {
                                 name: parsed.name,
                                 toolUseId: parsed.toolUseId,
@@ -1861,7 +1882,7 @@ async saveCredentialsToFile(filePath, newData) {
                         });
                     }
                 }
-                
+
                 offset += totalLength;
             } catch (e) {
                 // 解码失败，可能是不完整的消息，保留剩余数据
@@ -1869,7 +1890,7 @@ async saveCredentialsToFile(filePath, newData) {
                 break;
             }
         }
-        
+
         // 返回未处理的剩余数据（Buffer 类型）
         const remaining = uint8Buffer.slice(offset);
         return { events, remaining };
@@ -1892,7 +1913,7 @@ async saveCredentialsToFile(filePath, newData) {
                 content: content.parts?.map(part => part.text).join('') || ''
             }));
         }
-        
+
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
             throw new Error('No messages found in request body');
         }
@@ -1909,7 +1930,7 @@ async saveCredentialsToFile(filePath, newData) {
 
         let stream = null;
         try {
-            const response = await this.axiosInstance.post(requestUrl, requestData, { 
+            const response = await this.axiosInstance.post(requestUrl, requestData, {
                 headers,
                 responseType: 'stream'
             });
@@ -1922,11 +1943,11 @@ async saveCredentialsToFile(filePath, newData) {
                 // 将 chunk 转换为 Buffer 并拼接
                 const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
                 buffer = Buffer.concat([buffer, chunkBuffer]);
-                
+
                 // 解析缓冲区中的事件
                 const { events, remaining } = this.parseAwsEventStreamBuffer(buffer);
                 buffer = remaining;  // remaining 已经是 Buffer 类型
-                
+
                 // yield 所有事件，但过滤连续完全相同的 content 事件（Kiro API 有时会重复发送）
                 for (const event of events) {
                     if (event.type === 'content' && event.data) {
@@ -1953,14 +1974,14 @@ async saveCredentialsToFile(filePath, newData) {
             if (stream && typeof stream.destroy === 'function') {
                 stream.destroy();
             }
-            
+
             const status = error.response?.status;
             const errorCode = error.code;
             const errorMessage = error.message || '';
-            
+
             // 检查是否为可重试的网络错误
             const isNetworkError = isRetryableNetworkError(error);
-            
+
             // Handle 400 (Bad Request) - client error, don't count against credential
             if (status === 400) {
                 logger.warn(`[Kiro] Received 400 (Bad Request) in stream: ${errorMessage}`);
@@ -1972,7 +1993,7 @@ async saveCredentialsToFile(filePath, newData) {
             // Handle 401 (Unauthorized) - try to refresh token first
             if (status === 401 && !isRetry) {
                 logger.info('[Kiro] Received 401 in stream. Triggering background refresh via PoolManager...');
-                
+
                 // 1. 先刷新 UUID
                 const newUuid = this._refreshUuid();
                 if (newUuid) {
@@ -1986,7 +2007,7 @@ async saveCredentialsToFile(filePath, newData) {
                 error.skipErrorCount = true;
                 throw error;
             }
-            
+
             // Handle 402 (Payment Required / Quota Exceeded) - verify usage and mark as unhealthy with recovery time
             if (status === 402 && !isRetry) {
                 await this._handle402Error(error, 'stream');
@@ -2003,7 +2024,7 @@ async saveCredentialsToFile(filePath, newData) {
                 }
                 throw error;
             }
-            
+
             // Handle 429 (Too Many Requests) - wait baseDelay then switch credential
             if (status === 429) {
                 logger.info(`[Kiro] Received 429 (Too Many Requests) in stream. Waiting ${baseDelay}ms before switching credential...`);
@@ -2062,13 +2083,13 @@ async saveCredentialsToFile(filePath, newData) {
         if (requestBody._monitorRequestId) {
             this.config._monitorRequestId = requestBody._monitorRequestId;
         }
-        
+
         // 检查 token 是否即将过期，如果是则推送到刷新队列
         if (this.isExpiryDateNear()) {
             logger.info('[Kiro] Token is near expiry, marking credential as need refresh...');
             this._markCredentialNeedRefresh('Token near expiry in generateContentStream');
         }
-        
+
         const finalModel = MODEL_MAPPING[model] ? model : this.modelName;
         logger.info(`[Kiro] Calling generateContentStream with model: ${finalModel} (real streaming)`);
 
@@ -2286,7 +2307,7 @@ async saveCredentialsToFile(filePath, newData) {
                         if (tc.stop) {
                             try {
                                 currentToolCall.input = JSON.parse(currentToolCall.input);
-                            } catch (e) {}
+                            } catch (e) { }
                             toolCalls.push(currentToolCall);
                             currentToolCall = null;
                         }
@@ -2313,12 +2334,12 @@ async saveCredentialsToFile(filePath, newData) {
                     }
                 }
             }
-            
+
             // 处理未完成的工具调用（如果流提前结束）
             if (currentToolCall) {
                 try {
                     currentToolCall.input = JSON.parse(currentToolCall.input);
-                } catch (e) {}
+                } catch (e) { }
                 toolCalls.push(currentToolCall);
                 currentToolCall = null;
             }
@@ -2370,7 +2391,7 @@ async saveCredentialsToFile(filePath, newData) {
                             input: {}
                         }
                     };
-                    
+
                     yield {
                         type: "content_block_delta",
                         index: blockIndex,
@@ -2379,7 +2400,7 @@ async saveCredentialsToFile(filePath, newData) {
                             partial_json: typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input || {})
                         }
                     };
-                    
+
                     yield { type: "content_block_stop", index: blockIndex };
                 }
             }
@@ -2450,20 +2471,20 @@ async saveCredentialsToFile(filePath, newData) {
      */
     estimateInputTokens(requestBody) {
         let totalTokens = 0;
-        
+
         // Count system prompt tokens
         if (requestBody.system) {
             const systemText = this.getContentText(requestBody.system);
             totalTokens += this.countTextTokens(systemText);
         }
-        
+
         // Count thinking prefix tokens if thinking is enabled
         if (requestBody.thinking?.type === 'enabled') {
             const budget = this._normalizeThinkingBudgetTokens(requestBody.thinking.budget_tokens);
             const prefixText = `<thinking_mode>enabled</thinking_mode><max_thinking_length>${budget}</max_thinking_length>`;
             totalTokens += this.countTextTokens(prefixText);
         }
-        
+
         // Count all messages tokens
         if (requestBody.messages && Array.isArray(requestBody.messages)) {
             for (const message of requestBody.messages) {
@@ -2488,12 +2509,12 @@ async saveCredentialsToFile(filePath, newData) {
                 }
             }
         }
-        
+
         // Count tools definitions tokens if present
         if (requestBody.tools && Array.isArray(requestBody.tools)) {
             totalTokens += this.countTextTokens(JSON.stringify(requestBody.tools));
         }
-        
+
         return totalTokens;
     }
 
@@ -2523,7 +2544,7 @@ async saveCredentialsToFile(filePath, newData) {
                     content: [] // Content will be streamed via content_block_delta
                 }
             });
- 
+
             let totalOutputTokens = 0;
             let stopReason = "end_turn";
 
@@ -2683,7 +2704,7 @@ async saveCredentialsToFile(filePath, newData) {
         const models = KIRO_MODELS.map(id => ({
             name: id
         }));
-        
+
         return { models: models };
     }
 
@@ -2819,10 +2840,10 @@ async saveCredentialsToFile(filePath, newData) {
             logger.info('[Kiro] Token is near expiry, triggering background refresh...');
             this.triggerBackgroundRefresh();
         }
-        
+
         // 内部固定的资源类型
         const resourceType = 'AGENTIC_REQUEST';
-        
+
         // 构建请求 URL
         let usageLimitsUrl = this.baseUrl;
         usageLimitsUrl = usageLimitsUrl.replace('generateAssistantResponse', 'getUsageLimits');
@@ -2831,7 +2852,7 @@ async saveCredentialsToFile(filePath, newData) {
             origin: KIRO_CONSTANTS.ORIGIN_AI_EDITOR,
             resourceType: resourceType
         });
-         if (this.authMethod === KIRO_CONSTANTS.AUTH_METHOD_SOCIAL && this.profileArn) {
+        if (this.authMethod === KIRO_CONSTANTS.AUTH_METHOD_SOCIAL && this.profileArn) {
             params.append('profileArn', this.profileArn);
         }
         const fullUrl = `${usageLimitsUrl}?${params.toString()}`;
@@ -2860,7 +2881,7 @@ async saveCredentialsToFile(filePath, newData) {
             return response.data;
         } catch (error) {
             const status = error.response?.status;
-            
+
             // 从响应体中提取错误信息
             let errorMessage = error.message;
             if (error.response?.data) {
@@ -2874,25 +2895,25 @@ async saveCredentialsToFile(filePath, newData) {
                     errorMessage = typeof responseData.error === 'string' ? responseData.error : responseData.error.message || JSON.stringify(responseData.error);
                 }
             }
-            
+
             // 构建包含状态码和错误描述的错误信息
             const formattedError = status
                 ? new Error(`API call failed: ${status} - ${errorMessage}`)
                 : new Error(`API call failed: ${errorMessage}`);
-            
+
             // 对于用量查询，401/403 错误直接标记凭证为不健康，不重试
             if (status === 401) {
                 logger.info('[Kiro] Received 401 on getUsageLimits. Marking credential as unhealthy (no retry)...');
                 this._markCredentialNeedRefresh('401 Unauthorized on usage query', formattedError);
                 throw formattedError;
             }
-            
+
             if (status === 403) {
                 logger.info('[Kiro] Received 403 on getUsageLimits. Marking credential as unhealthy (no retry)...');
-                
+
                 // 检查是否为 temporarily suspended 错误
                 const isSuspended = errorMessage && errorMessage.toLowerCase().includes('temporarily is suspended');
-                
+
                 if (isSuspended) {
                     // temporarily suspended 错误：直接标记为不健康，不刷新 UUID
                     logger.info('[Kiro] Account temporarily suspended on usage query. Marking as unhealthy without UUID refresh...');
@@ -2901,10 +2922,10 @@ async saveCredentialsToFile(filePath, newData) {
                     // 其他 403 错误：标记需要刷新
                     this._markCredentialNeedRefresh('403 Forbidden on usage query', formattedError);
                 }
-                
+
                 throw formattedError;
             }
-            
+
             logger.error('[Kiro] Failed to fetch usage limits:', formattedError.message, error);
             throw formattedError;
         }
