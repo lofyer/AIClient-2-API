@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import { getProviderModels } from '../provider-models.js';
-import { countTokens } from '@anthropic-ai/tokenizer';
+// Removed: import { countTokens } from '@anthropic-ai/tokenizer'; // Too slow and blocking for large contexts
 import { configureAxiosProxy } from '../../utils/proxy-utils.js';
 import { isRetryableNetworkError, MODEL_PROVIDER, formatExpiryLog } from '../../utils/common.js';
 import { getProviderPoolManager } from '../../services/service-manager.js';
@@ -922,6 +922,7 @@ export class KiroApiService {
         }
 
         processedMessages = messagesToKeep;
+        await new Promise(resolve => setImmediate(resolve)); // Yield event loop
 
         // 清理不完整的工具调用：确保每个 tool_use 都有对应的 tool_result
         // Kiro API 要求工具调用必须完整，否则会返回 "Improperly formed request" 错误
@@ -2371,13 +2372,10 @@ export class KiroApiService {
      */
     countTextTokens(text) {
         if (!text) return 0;
-        try {
-            return countTokens(text);
-        } catch (error) {
-            // Fallback to estimation if tokenizer fails
-            logger.warn('[Kiro] Tokenizer error, falling back to estimation:', error.message);
-            return Math.ceil((text || '').length / 4);
-        }
+        // Fast approximation: average English word is 4 chars + 1 space = 5 chars ~= 1.3 tokens
+        // For CJK and mixed code, length / 3 or length / 4 is a very fast and acceptable approximation 
+        // that completely prevents O(N) CPU thread locking which occurs with actual BPE tokenizers
+        return Math.ceil(text.length / 3.5);
     }
 
     /**
