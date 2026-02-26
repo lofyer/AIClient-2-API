@@ -15,12 +15,14 @@ import { getProviderPoolManager } from '../../services/service-manager.js';
 import kiroParserPool from '../../utils/kiro-parser-pool.js';
 
 const KIRO_THINKING = {
+    MIN_BUDGET_TOKENS: 1024,
     MAX_BUDGET_TOKENS: 24576,
     DEFAULT_BUDGET_TOKENS: 20000,
     START_TAG: '<thinking>',
     END_TAG: '</thinking>',
     MODE_TAG: '<thinking_mode>',
     MAX_LEN_TAG: '<max_thinking_length>',
+    EFFORT_TAG: '<thinking_effort>',
 };
 
 const KIRO_CONSTANTS = {
@@ -31,7 +33,7 @@ const KIRO_CONSTANTS = {
     AXIOS_TIMEOUT: 120000, // 2 minutes timeout for normal requests
     TOKEN_REFRESH_TIMEOUT: 15000, // 15 seconds timeout for token refresh (shorter to avoid blocking)
     USER_AGENT: 'KiroIDE',
-    KIRO_VERSION: '0.8.140',
+    KIRO_VERSION: '0.8.206',
     CONTENT_TYPE_JSON: 'application/json',
     ACCEPT_JSON: 'application/json',
     AUTH_METHOD_SOCIAL: 'social',
@@ -50,7 +52,8 @@ const FULL_MODEL_MAPPING = {
     "claude-opus-4-5-20251101": "claude-opus-4.5",
     "claude-opus-4-6": "claude-opus-4.6",
     "claude-sonnet-4-5": "CLAUDE_SONNET_4_5_20250929_V1_0",
-    "claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0"
+    "claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0",
+    "claude-sonnet-4-6": "claude-sonnet-4.6"
 };
 
 // 只保留 KIRO_MODELS 中存在的模型映射
@@ -87,8 +90,8 @@ function getSystemRuntimeInfo() {
     const nodeVersion = process.version.replace('v', '');
 
     let osName = osPlatform;
-    if (osPlatform === 'win32') osName = `windows#${osRelease}`;
-    else if (osPlatform === 'darwin') osName = `macos#${osRelease}`;
+    if (osPlatform === 'win32') osName = `windows`;
+    else if (osPlatform === 'darwin') osName = `darwin#${osRelease}`;
     else osName = `${osPlatform}#${osRelease}`;
 
     return {
@@ -420,10 +423,10 @@ export class KiroApiService {
             headers: {
                 'Content-Type': KIRO_CONSTANTS.CONTENT_TYPE_JSON,
                 'Accept': KIRO_CONSTANTS.ACCEPT_JSON,
-                'amz-sdk-request': 'attempt=1; max=1',
+                'amz-sdk-request': 'attempt=1; max=3',
                 'x-amzn-kiro-agent-mode': 'vibe',
-                'x-amz-user-agent': `aws-sdk-js/1.0.0 KiroIDE-${kiroVersion}-${machineId}`,
-                'user-agent': `aws-sdk-js/1.0.0 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererruntime#1.0.0 m/E KiroIDE-${kiroVersion}-${machineId}`,
+                'x-amz-user-agent': `aws-sdk-js/1.0.27 KiroIDE-${kiroVersion}-${machineId}`,
+                'user-agent': `aws-sdk-js/1.0.27 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererstreaming#1.0.27 m/E KiroIDE-${kiroVersion}-${machineId}`,
                 'Connection': 'close'
             },
         };
@@ -733,14 +736,27 @@ export class KiroApiService {
     }
 
     _generateThinkingPrefix(thinking) {
-        if (!thinking || thinking.type !== 'enabled') return null;
-        const budget = this._normalizeThinkingBudgetTokens(thinking.budget_tokens);
-        return `<thinking_mode>enabled</thinking_mode><max_thinking_length>${budget}</max_thinking_length>`;
+        if (!thinking || !thinking.type) return null;
+        const type = typeof thinking.type === 'string' ? thinking.type.toLowerCase().trim() : '';
+
+        if (type === 'enabled') {
+            const budget = this._normalizeThinkingBudgetTokens(thinking.budget_tokens);
+            return `<thinking_mode>enabled</thinking_mode><max_thinking_length>${budget}</max_thinking_length>`;
+        }
+
+        if (type === 'adaptive') {
+            const effortRaw = typeof thinking.effort === 'string' ? thinking.effort : '';
+            const effort = effortRaw.toLowerCase().trim();
+            const normalizedEffort = (effort === 'low' || effort === 'medium' || effort === 'high') ? effort : 'high';
+            return `<thinking_mode>adaptive</thinking_mode><thinking_effort>${normalizedEffort}</thinking_effort>`;
+        }
+
+        return null;
     }
 
     _hasThinkingPrefix(text) {
         if (!text) return false;
-        return text.includes(KIRO_THINKING.MODE_TAG) || text.includes(KIRO_THINKING.MAX_LEN_TAG);
+        return text.includes(KIRO_THINKING.MODE_TAG) || text.includes(KIRO_THINKING.MAX_LEN_TAG) || text.includes(KIRO_THINKING.EFFORT_TAG);
     }
 
     _toClaudeContentBlocksFromKiroText(content) {
@@ -1793,7 +1809,13 @@ export class KiroApiService {
 
         try {
             const { responseText, toolCalls } = this._processApiResponse(response);
-            return this.buildClaudeResponse(responseText, false, 'assistant', model, toolCalls, inputTokens);
+            const thinkingType = requestBody?.thinking?.type;
+            const thinkingRequested = typeof thinkingType === 'string' &&
+                (thinkingType.toLowerCase() === 'enabled' || thinkingType.toLowerCase() === 'adaptive');
+            const contentForClaude = thinkingRequested
+                ? this._toClaudeContentBlocksFromKiroText(responseText)
+                : responseText;
+            return this.buildClaudeResponse(contentForClaude, false, 'assistant', model, toolCalls, inputTokens);
         } catch (error) {
             logger.error('[Kiro] Error in generateContent:', error);
             throw new Error(`Error processing response: ${error.message}`);
@@ -2012,17 +2034,22 @@ export class KiroApiService {
         let contextUsagePercentage = null;
         const messageId = `${uuidv4()}`;
 
-        const thinkingRequested = requestBody?.thinking?.type === 'enabled';
+        const thinkingType = requestBody?.thinking?.type;
+        const thinkingRequested = typeof thinkingType === 'string' &&
+            (thinkingType.toLowerCase() === 'enabled' || thinkingType.toLowerCase() === 'adaptive');
 
         const streamState = {
             thinkingRequested,
             buffer: '',
+            pendingTextBeforeThinking: '',
             inThinking: false,
             thinkingExtracted: false,
             thinkingBlockIndex: null,
             textBlockIndex: null,
             nextBlockIndex: 0,
             stoppedBlocks: new Set(),
+            stripThinkingLeadingNewline: false,
+            stripTextLeadingNewlinesAfterThinking: false,
         };
 
         const ensureBlockStart = (blockType) => {
@@ -2259,18 +2286,32 @@ export class KiroApiService {
                 currentToolCall = null;
             }
 
-            if (thinkingRequested && streamState.buffer) {
+            if (thinkingRequested && (streamState.inThinking || streamState.buffer || streamState.pendingTextBeforeThinking)) {
                 if (streamState.inThinking) {
                     logger.warn('[Kiro] Incomplete thinking tag at stream end');
+                    if (streamState.stripThinkingLeadingNewline) {
+                        if (streamState.buffer.startsWith('\r\n')) streamState.buffer = streamState.buffer.slice(2);
+                        else if (streamState.buffer.startsWith('\n')) streamState.buffer = streamState.buffer.slice(1);
+                        streamState.stripThinkingLeadingNewline = false;
+                    }
                     yield* pushEvents(createThinkingDeltaEvents(streamState.buffer));
                     streamState.buffer = '';
                     yield* pushEvents(createThinkingDeltaEvents(""));
                     yield* pushEvents(stopBlock(streamState.thinkingBlockIndex));
                 } else if (!streamState.thinkingExtracted) {
-                    yield* pushEvents(createTextDeltaEvents(streamState.buffer));
+                    const remaining = `${streamState.pendingTextBeforeThinking}${streamState.buffer}`;
+                    streamState.pendingTextBeforeThinking = '';
+                    if (remaining) yield* pushEvents(createTextDeltaEvents(remaining));
                     streamState.buffer = '';
                 } else {
-                    yield* pushEvents(createTextDeltaEvents(streamState.buffer));
+                    let remaining = streamState.buffer;
+                    streamState.buffer = '';
+                    if (streamState.stripTextLeadingNewlinesAfterThinking) {
+                        if (remaining.startsWith('\r\n\r\n')) remaining = remaining.slice(4);
+                        else if (remaining.startsWith('\n\n')) remaining = remaining.slice(2);
+                        streamState.stripTextLeadingNewlinesAfterThinking = false;
+                    }
+                    if (remaining) yield* pushEvents(createTextDeltaEvents(remaining));
                     streamState.buffer = '';
                 }
             }
@@ -2391,10 +2432,18 @@ export class KiroApiService {
         }
 
         // Count thinking prefix tokens if thinking is enabled
-        if (requestBody.thinking?.type === 'enabled') {
-            const budget = this._normalizeThinkingBudgetTokens(requestBody.thinking.budget_tokens);
-            const prefixText = `<thinking_mode>enabled</thinking_mode><max_thinking_length>${budget}</max_thinking_length>`;
-            totalTokens += this.countTextTokens(prefixText);
+        if (requestBody.thinking?.type && typeof requestBody.thinking.type === 'string') {
+            const t = requestBody.thinking.type.toLowerCase().trim();
+            if (t === 'enabled') {
+                const budget = this._normalizeThinkingBudgetTokens(requestBody.thinking.budget_tokens);
+                const prefixText = `<thinking_mode>enabled</thinking_mode><max_thinking_length>${budget}</max_thinking_length>`;
+                totalTokens += this.countTextTokens(prefixText);
+            } else if (t === 'adaptive') {
+                const effortRaw = typeof requestBody.thinking.effort === 'string' ? requestBody.thinking.effort : '';
+                const effort = effortRaw.toLowerCase().trim();
+                const normalizedEffort = (effort === 'low' || effort === 'medium' || effort === 'high') ? effort : 'high';
+                totalTokens += this.countTextTokens(`<thinking_mode>adaptive</thinking_mode><thinking_effort>${normalizedEffort}</thinking_effort>`);
+            }
         }
 
         // Count all messages tokens
@@ -2780,10 +2829,10 @@ export class KiroApiService {
 
         const headers = {
             'Authorization': `Bearer ${this.accessToken}`,
-            'x-amz-user-agent': `aws-sdk-js/1.0.0 KiroIDE-${kiroVersion}-${machineId}`,
-            'user-agent': `aws-sdk-js/1.0.0 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererruntime#1.0.0 m/E KiroIDE-${kiroVersion}-${machineId}`,
+            'x-amz-user-agent': `aws-sdk-js/1.0.27 KiroIDE-${kiroVersion}-${machineId}`,
+            'user-agent': `aws-sdk-js/1.0.27 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererstreaming#1.0.27 m/E KiroIDE-${kiroVersion}-${machineId}`,
             'amz-sdk-invocation-id': uuidv4(),
-            'amz-sdk-request': 'attempt=1; max=1',
+            'amz-sdk-request': 'attempt=1; max=3',
             'Connection': 'close'
         };
 
