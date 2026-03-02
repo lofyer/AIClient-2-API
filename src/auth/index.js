@@ -25,6 +25,11 @@ export {
     importAwsCredentials
 } from './kiro-oauth.js';
 
+// Kiro Batch AWS Import
+export {
+    batchImportAwsCredentials
+} from './kiro-batch-aws-import.js';
+
 // iFlow OAuth
 export {
     handleIFlowOAuth,

@@ -809,6 +809,9 @@ function showKiroBatchImportModal() {
                                     const headerDiv = resultDiv.querySelector('div:first-child');
                                     headerDiv.innerHTML = `<i class="fas ${resultIcon}"></i> <strong>${resultMessage}</strong>`;
                                     
+                                    // 更新按钮文本为"完成"
+                                    submitBtn.innerHTML = `<i class="fas fa-check"></i> <span data-i18n="oauth.kiro.importCompleted">${t('oauth.kiro.importCompleted')}</span>`;
+                                    
                                     // 如果有成功的，刷新提供商列表
                                     if (data.successCount > 0) {
                                         loadProviders();

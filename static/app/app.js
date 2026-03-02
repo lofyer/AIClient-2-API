@@ -229,6 +229,17 @@ window.showAuthModal = showAuthModal;
 window.executeGenerateAuthUrl = executeGenerateAuthUrl;
 window.handleGenerateAuthUrl = handleGenerateAuthUrl;
 
+// 动态导入批量上传模块并挂载到 window
+window.showKiroAwsBatchImportModal = async () => {
+    try {
+        const module = await import('./kiro-aws-batch-import.js');
+        module.showKiroAwsBatchImportModal();
+    } catch (error) {
+        console.error('Failed to load batch import module:', error);
+        showToast(t('common.error'), 'Failed to load batch import module', 'error');
+    }
+};
+
 // 配置管理相关全局函数
 window.viewConfig = viewConfig;
 window.deleteConfig = deleteConfig;

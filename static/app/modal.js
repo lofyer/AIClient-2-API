@@ -62,6 +62,11 @@ function showProviderManagerModal(data) {
                         <button class="btn btn-success" onclick="window.showAddProviderForm('${providerType}')">
                             <i class="fas fa-plus"></i> <span data-i18n="modal.provider.add">添加新提供商</span>
                         </button>
+                        ${providerType === 'claude-kiro-oauth' ? `
+                        <button class="btn btn-primary" onclick="window.showKiroAwsBatchImportModal()" title="批量导入 AWS 凭据">
+                            <i class="fas fa-file-upload"></i> <span data-i18n="modal.provider.batchImport">批量导入</span>
+                        </button>
+                        ` : ''}
                         <button class="btn btn-warning" onclick="window.resetAllProvidersHealth('${providerType}')" data-i18n="modal.provider.resetHealth" title="将所有节点的健康状态重置为健康">
                             <i class="fas fa-heartbeat"></i> 重置为健康
                         </button>

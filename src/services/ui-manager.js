@@ -315,6 +315,11 @@ export async function handleUIApiRequests(method, pathParam, req, res, currentCo
         return await oauthApi.handleImportAwsCredentials(req, res);
     }
 
+    // Batch import AWS SSO credentials for Kiro with SSE (real-time progress)
+    if (method === 'POST' && pathParam === '/api/kiro/batch-import-aws-credentials') {
+        return await oauthApi.handleBatchImportAwsCredentials(req, res);
+    }
+
     // Get plugins list
     if (method === 'GET' && pathParam === '/api/plugins') {
         return await pluginApi.handleGetPlugins(req, res);
